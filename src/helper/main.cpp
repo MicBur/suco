@@ -38,7 +38,7 @@ bool read_all(int sock, void* data, size_t len) {
 
 // Generate temp file name
 std::string get_temp_file(const std::string& suffix) {
-    std::string temp_str = "/tmp/ag_grid_XXXXXX" + suffix;
+    std::string temp_str = "/tmp/suco_grid_XXXXXX" + suffix;
     std::vector<char> temp_chars(temp_str.begin(), temp_str.end());
     temp_chars.push_back('\0');
     int fd = mkstemps(temp_chars.data(), suffix.size());
@@ -46,7 +46,7 @@ std::string get_temp_file(const std::string& suffix) {
         close(fd);
         return std::string(temp_chars.data());
     }
-    return "/tmp/ag_grid_" + std::to_string(rand()) + suffix;
+    return "/tmp/suco_grid_" + std::to_string(rand()) + suffix;
 }
 
 // Helper to run a command and capture output
@@ -147,7 +147,7 @@ void handle_client(int client_sock) {
 
     std::ofstream out(in_file);
     if (!out.is_open()) {
-        std::cerr << "ag-helper error: Failed to write to temporary file: " << in_file << std::endl;
+        std::cerr << "suco-helper error: Failed to write to temporary file: " << in_file << std::endl;
         close(client_sock);
         return;
     }
@@ -171,7 +171,7 @@ void handle_client(int client_sock) {
             in.close();
         } else {
             exit_code = -2; // Mark read error
-            compiler_output += "\nag-helper error: Failed to read output object file: " + out_file;
+            compiler_output += "\nsuco-helper error: Failed to read output object file: " + out_file;
         }
     }
 
@@ -202,14 +202,14 @@ int main() {
     // Initialize random seed
     srand(time(nullptr));
 
-    int port = ag::DEFAULT_PORT;
-    if (const char* env_port = std::getenv("AG_PORT")) {
+    int port = suco::DEFAULT_PORT;
+    if (const char* env_port = std::getenv("SUCO_PORT")) {
         port = std::stoi(env_port);
     }
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        std::cerr << "ag-helper: Failed to create server socket." << std::endl;
+        std::cerr << "suco-helper: Failed to create server socket." << std::endl;
         return 1;
     }
 
@@ -223,18 +223,18 @@ int main() {
     address.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        std::cerr << "ag-helper: Bind failed on port " << port << std::endl;
+        std::cerr << "suco-helper: Bind failed on port " << port << std::endl;
         close(server_fd);
         return 1;
     }
 
     if (listen(server_fd, 128) < 0) {
-        std::cerr << "ag-helper: Listen failed." << std::endl;
+        std::cerr << "suco-helper: Listen failed." << std::endl;
         close(server_fd);
         return 1;
     }
 
-    std::cout << "ag-helper: Compile daemon listening on port " << port << std::endl;
+    std::cout << "suco-helper: Compile daemon listening on port " << port << std::endl;
 
     while (true) {
         struct sockaddr_in client_addr;

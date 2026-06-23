@@ -16,7 +16,7 @@ COPY . .
 
 RUN mkdir build && cd build && \
     cmake -DCMAKE_BUILD_TYPE=Release .. && \
-    make ag-helper
+    make suco-helper
 
 # --- Runtime Stage ---
 FROM ubuntu:24.04
@@ -30,12 +30,12 @@ RUN apt-get update && apt-get install -y \
     libhiredis-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/build/ag-helper /usr/local/bin/ag-helper
+COPY --from=builder /app/build/suco-helper /usr/local/bin/suco-helper
 
 # Exposed port for the compilation service
 EXPOSE 9000
 
 # Set default port via environment variable
-ENV AG_PORT=9000
+ENV SUCO_PORT=9000
 
-CMD ["/usr/local/bin/ag-helper"]
+CMD ["/usr/local/bin/suco-helper"]

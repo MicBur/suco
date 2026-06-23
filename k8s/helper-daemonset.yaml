@@ -1,37 +1,37 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ag-helper-service
-  namespace: ag-grid
+  name: suco-helper-service
+  namespace: suco
 spec:
   ports:
     - port: 9000
       targetPort: 9000
   selector:
-    app: ag-helper
+    app: suco-helper
   type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: ag-helper
-  namespace: ag-grid
+  name: suco-helper
+  namespace: suco
   labels:
-    app: ag-helper
+    app: suco-helper
 spec:
   selector:
     matchLabels:
-      app: ag-helper
+      app: suco-helper
   template:
     metadata:
       labels:
-        app: ag-helper
+        app: suco-helper
     spec:
-      hostNetwork: false # Set to true if direct host-port performance is needed
+      hostNetwork: false
       containers:
-        - name: ag-helper
+        - name: suco-helper
           # Image from the local registry on Brain Server (port 5000)
-          image: local-registry:5000/ag-helper:latest
+          image: local-registry:5000/suco-helper:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 9000
@@ -41,8 +41,6 @@ spec:
               cpu: "1"
               memory: "1Gi"
             limits:
-              # Allow compile pods to burst and use all available CPU on the node
-              # but cap memory to prevent OOM kills of system processes
               memory: "8Gi"
           securityContext:
             privileged: false

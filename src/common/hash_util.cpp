@@ -3,7 +3,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace ag {
+namespace suco {
 
 std::string calculate_sha256(const std::string& content, const std::string& flags) {
     SHA256_CTX sha256;
@@ -25,4 +25,4 @@ std::string calculate_sha256(const std::string& content, const std::string& flag
     return ss.str();
 }
 
-} // namespace ag
+} // namespace suco

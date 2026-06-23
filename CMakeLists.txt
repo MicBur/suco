@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(ag-grid-build CXX)
+project(suco CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,7 +8,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenSSL REQUIRED)
 
 # Find hiredis for Redis client support
-# We can link it directly or look for it
 find_path(HIREDIS_INCLUDE_DIR hiredis/hiredis.h)
 find_library(HIREDIS_LIBRARY hiredis)
 
@@ -27,23 +26,23 @@ set(COMMON_SOURCES
     src/common/hash_util.cpp
 )
 
-# Client: ag-build
-add_executable(ag-build
+# Client: suco (Compiler wrapper)
+add_executable(suco
     src/client/main.cpp
     ${COMMON_SOURCES}
 )
-target_link_libraries(ag-build
+target_link_libraries(suco
     OpenSSL::Crypto
     ${HIREDIS_LIBRARY}
     pthread
 )
 
-# Helper: ag-helper
-add_executable(ag-helper
+# Helper: suco-helper (Daemon)
+add_executable(suco-helper
     src/helper/main.cpp
     ${COMMON_SOURCES}
 )
-target_link_libraries(ag-helper
+target_link_libraries(suco-helper
     OpenSSL::Crypto
     pthread
 )

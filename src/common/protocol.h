@@ -1,11 +1,11 @@
-#ifndef AG_PROTOCOL_H
-#define AG_PROTOCOL_H
+#ifndef SUCO_PROTOCOL_H
+#define SUCO_PROTOCOL_H
 
 #include <stdint.h>
 #include <string>
 #include <vector>
 
-namespace ag {
+namespace suco {
 
 constexpr uint16_t DEFAULT_PORT = 9000;
 
@@ -22,6 +22,6 @@ struct CompileResponse {
     std::vector<uint8_t> object_data; // Compiled .o file bytes
 };
 
-} // namespace ag
+} // namespace suco
 
-#endif // AG_PROTOCOL_H
+#endif // SUCO_PROTOCOL_H

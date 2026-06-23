@@ -38,10 +38,9 @@ std::string run_local_capture(const std::string& cmd, int& exit_code) {
 // Fallback to local compilation
 void fallback_local(char** argv) {
     // Re-execute original command
-    // argv[1] is the compiler (e.g., g++), argv + 1 is the rest of arguments
     execvp(argv[1], argv + 1);
     // If execvp fails:
-    std::cerr << "ag-build error: Failed to execute local fallback compiler " << argv[1] << std::endl;
+    std::cerr << "suco error: Failed to execute local fallback compiler " << argv[1] << std::endl;
     exit(1);
 }
 
@@ -110,7 +109,7 @@ int connect_with_timeout(int sock, const struct sockaddr* addr, socklen_t addrle
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: ag-build <compiler> [flags] -c <source> -o <output>" << std::endl;
+        std::cerr << "Usage: suco <compiler> [flags] -c <source> -o <output>" << std::endl;
         return 1;
     }
 
@@ -167,7 +166,6 @@ int main(int argc, char** argv) {
     // Gather compiler flags for remote compile (strip includes/macros for hashing/helper clean command)
     std::stringstream compile_flags;
     for (const auto& flag : other_flags) {
-        // Keep warnings, optimizations, target architectures, standards
         if (flag.rfind("-O", 0) == 0 || flag.rfind("-W", 0) == 0 || 
             flag.rfind("-std=", 0) == 0 || flag.rfind("-m", 0) == 0 || 
             flag.rfind("-f", 0) == 0) {
@@ -177,26 +175,26 @@ int main(int argc, char** argv) {
     std::string flags_str = compile_flags.str();
 
     // Calculate hash
-    std::string source_hash = ag::calculate_sha256(preprocessed_source, flags_str);
+    std::string source_hash = suco::calculate_sha256(preprocessed_source, flags_str);
 
     // Redis configuration (defaults to localhost, override via Env)
     std::string redis_read_host = "127.0.0.1";
     int redis_read_port = 6379;
-    if (const char* env_host = std::getenv("AG_REDIS_REPLICA_HOST")) redis_read_host = env_host;
-    if (const char* env_port = std::getenv("AG_REDIS_REPLICA_PORT")) redis_read_port = std::stoi(env_port);
+    if (const char* env_host = std::getenv("SUCO_REDIS_REPLICA_HOST")) redis_read_host = env_host;
+    if (const char* env_port = std::getenv("SUCO_REDIS_REPLICA_PORT")) redis_read_port = std::stoi(env_port);
 
     std::string redis_write_host = redis_read_host;
     int redis_write_port = redis_read_port;
-    if (const char* env_host = std::getenv("AG_REDIS_MASTER_HOST")) redis_write_host = env_host;
-    if (const char* env_port = std::getenv("AG_REDIS_MASTER_PORT")) redis_write_port = std::stoi(env_port);
+    if (const char* env_host = std::getenv("SUCO_REDIS_MASTER_HOST")) redis_write_host = env_host;
+    if (const char* env_port = std::getenv("SUCO_REDIS_MASTER_PORT")) redis_write_port = std::stoi(env_port);
 
     // Check Redis replica for Cache Hit with timeout
     struct timeval redis_timeout = { 0, 500000 }; // 500ms
     redisContext* redis_read = redisConnectWithTimeout(redis_read_host.c_str(), redis_read_port, redis_timeout);
     bool cache_hit = false;
     if (redis_read && !redis_read->err) {
-        std::string obj_key = "agb:obj:" + source_hash;
-        std::string log_key = "agb:log:" + source_hash;
+        std::string obj_key = "suco:obj:" + source_hash;
+        std::string log_key = "suco:log:" + source_hash;
 
         redisReply* reply_obj = (redisReply*)redisCommand(redis_read, "GET %s", obj_key.c_str());
         if (reply_obj && reply_obj->type == REDIS_REPLY_STRING) {
@@ -225,19 +223,19 @@ int main(int argc, char** argv) {
 
     // Connect to Remote Helper Service
     std::string helper_host = "127.0.0.1";
-    int helper_port = ag::DEFAULT_PORT;
-    if (const char* env_host = std::getenv("AG_HELPER_HOST")) helper_host = env_host;
-    if (const char* env_port = std::getenv("AG_HELPER_PORT")) helper_port = std::stoi(env_port);
+    int helper_port = suco::DEFAULT_PORT;
+    if (const char* env_host = std::getenv("SUCO_HELPER_HOST")) helper_host = env_host;
+    if (const char* env_port = std::getenv("SUCO_HELPER_PORT")) helper_port = std::stoi(env_port);
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        std::cerr << "ag-build warning: Failed to create socket, falling back to local compile." << std::endl;
+        std::cerr << "suco warning: Failed to create socket, falling back to local compile." << std::endl;
         fallback_local(argv);
     }
 
     struct hostent* server = gethostbyname(helper_host.c_str());
     if (!server) {
-        std::cerr << "ag-build warning: Helper host not found, falling back to local compile." << std::endl;
+        std::cerr << "suco warning: Helper host not found, falling back to local compile." << std::endl;
         close(sock);
         fallback_local(argv);
     }
@@ -248,19 +246,20 @@ int main(int argc, char** argv) {
     std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
     serv_addr.sin_port = htons(helper_port);
 
-    // Set connection timeout (e.g. 3 seconds)
-    struct timeval tv;
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
-
+    // Set connection timeout (e.g. 2 seconds)
     if (connect_with_timeout(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr), 2) < 0) {
-        std::cerr << "ag-build warning: Connection to helper " << helper_host << ":" << helper_port 
+        std::cerr << "suco warning: Connection to helper " << helper_host << ":" << helper_port 
                   << " failed. Falling back to local compile." << std::endl;
         close(sock);
         fallback_local(argv);
     }
+
+    // Set receive/send timeout for protocol transmission
+    struct timeval tv;
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
 
     // Construct command to send to remote node
     std::stringstream remote_cmd;
@@ -276,7 +275,7 @@ int main(int argc, char** argv) {
         !send_all(sock, remote_cmd_str.c_str(), remote_cmd_str.size()) ||
         !send_all(sock, &src_len, 4) ||
         !send_all(sock, preprocessed_source.c_str(), preprocessed_source.size())) {
-        std::cerr << "ag-build error: Sending data to helper failed. Falling back to local compile." << std::endl;
+        std::cerr << "suco error: Sending data to helper failed. Falling back to local compile." << std::endl;
         close(sock);
         fallback_local(argv);
     }
@@ -289,7 +288,7 @@ int main(int argc, char** argv) {
     // [4 bytes: exit_code] + [4 bytes: log_len] + [log] + [4 bytes: bin_len] + [bin]
     int32_t exit_code = -1;
     if (!read_all(sock, &exit_code, 4)) {
-        std::cerr << "ag-build error: Failed to receive exit code. Falling back to local compile." << std::endl;
+        std::cerr << "suco error: Failed to receive exit code. Falling back to local compile." << std::endl;
         close(sock);
         fallback_local(argv);
     }
@@ -297,7 +296,7 @@ int main(int argc, char** argv) {
 
     uint32_t log_len = 0;
     if (!read_all(sock, &log_len, 4)) {
-        std::cerr << "ag-build error: Failed to receive compiler output size. Falling back." << std::endl;
+        std::cerr << "suco error: Failed to receive compiler output size. Falling back." << std::endl;
         close(sock);
         fallback_local(argv);
     }
@@ -307,7 +306,7 @@ int main(int argc, char** argv) {
     if (log_len > 0) {
         std::vector<char> log_buf(log_len);
         if (!read_all(sock, log_buf.data(), log_len)) {
-            std::cerr << "ag-build error: Failed to read compiler output. Falling back." << std::endl;
+            std::cerr << "suco error: Failed to read compiler output. Falling back." << std::endl;
             close(sock);
             fallback_local(argv);
         }
@@ -316,7 +315,7 @@ int main(int argc, char** argv) {
 
     uint32_t bin_len = 0;
     if (!read_all(sock, &bin_len, 4)) {
-        std::cerr << "ag-build error: Failed to receive binary object size. Falling back." << std::endl;
+        std::cerr << "suco error: Failed to receive binary object size. Falling back." << std::endl;
         close(sock);
         fallback_local(argv);
     }
@@ -326,7 +325,7 @@ int main(int argc, char** argv) {
     if (bin_len > 0) {
         bin_data.resize(bin_len);
         if (!read_all(sock, bin_data.data(), bin_len)) {
-            std::cerr << "ag-build error: Failed to read binary object data. Falling back." << std::endl;
+            std::cerr << "suco error: Failed to read binary object data. Falling back." << std::endl;
             close(sock);
             fallback_local(argv);
         }
@@ -342,7 +341,7 @@ int main(int argc, char** argv) {
         // Save to output file
         std::ofstream out(output_file, std::ios::binary);
         if (!out.is_open()) {
-            std::cerr << "ag-build error: Failed to write output file: " << output_file << std::endl;
+            std::cerr << "suco error: Failed to write output file: " << output_file << std::endl;
             return 1;
         }
         out.write(reinterpret_cast<const char*>(bin_data.data()), bin_len);
@@ -352,8 +351,8 @@ int main(int argc, char** argv) {
         struct timeval redis_write_timeout = { 1, 0 }; // 1s
         redisContext* redis_write = redisConnectWithTimeout(redis_write_host.c_str(), redis_write_port, redis_write_timeout);
         if (redis_write && !redis_write->err) {
-            std::string obj_key = "agb:obj:" + source_hash;
-            std::string log_key = "agb:log:" + source_hash;
+            std::string obj_key = "suco:obj:" + source_hash;
+            std::string log_key = "suco:log:" + source_hash;
 
             // Write object binary
             redisReply* r1 = (redisReply*)redisCommand(redis_write, "SET %s %b", obj_key.c_str(), bin_data.data(), (size_t)bin_len);
