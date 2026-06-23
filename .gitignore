@@ -1,0 +1,14 @@
+# Ignore build directories
+build/
+
+# Ignore object files and intermediate preprocessor files
+*.o
+*.i
+*.ii
+
+# Ignore logs and temp files
+*.log
+nohup.out
+
+# Ignore test executables/runs if any
+test.cpp

@@ -1,0 +1,20 @@
+stages:
+  - build
+
+# Build the ag-helper image and push it to GitLab Container Registry
+build-helper:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor \
+      --context "${CI_PROJECT_DIR}" \
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+      --destination "${CI_REGISTRY_IMAGE}:latest" \
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}"
+  only:
+    - main
+    - master

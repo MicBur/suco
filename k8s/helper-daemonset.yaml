@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ag-helper-service
+  namespace: ag-grid
+spec:
+  ports:
+    - port: 9000
+      targetPort: 9000
+  selector:
+    app: ag-helper
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ag-helper
+  namespace: ag-grid
+  labels:
+    app: ag-helper
+spec:
+  selector:
+    matchLabels:
+      app: ag-helper
+  template:
+    metadata:
+      labels:
+        app: ag-helper
+    spec:
+      hostNetwork: false # Set to true if direct host-port performance is needed
+      containers:
+        - name: ag-helper
+          # Image from the local registry on Brain Server (port 5000)
+          image: local-registry:5000/ag-helper:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9000
+              name: compile-port
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1Gi"
+            limits:
+              # Allow compile pods to burst and use all available CPU on the node
+              # but cap memory to prevent OOM kills of system processes
+              memory: "8Gi"
+          securityContext:
+            privileged: false
+          volumeMounts:
+            - mountPath: /tmp
+              name: temp-volume
+      volumes:
+        - name: temp-volume
+          emptyDir: {}
