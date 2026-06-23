@@ -205,6 +205,10 @@ int main(int argc, char** argv) {
                 out.close();
                 cache_hit = true;
 
+                // Increment cache hits counter in Redis
+                redisReply* r_hit = (redisReply*)redisCommand(redis_read, "INCR suco:stats:cache_hits");
+                if (r_hit) freeReplyObject(r_hit);
+
                 // Also display compiler warnings if there were any
                 redisReply* reply_log = (redisReply*)redisCommand(redis_read, "GET %s", log_key.c_str());
                 if (reply_log && reply_log->type == REDIS_REPLY_STRING && reply_log->len > 0) {
@@ -267,14 +271,17 @@ int main(int argc, char** argv) {
     std::string remote_cmd_str = remote_cmd.str();
 
     // Serialise Request:
-    // [4 bytes: cmd_len] + [cmd] + [4 bytes: src_len] + [src]
+    // [4 bytes: cmd_len] + [cmd] + [4 bytes: src_len] + [src] + [4 bytes: file_len] + [filename]
     uint32_t cmd_len = htonl(remote_cmd_str.size());
     uint32_t src_len = htonl(preprocessed_source.size());
+    uint32_t file_len = htonl(source_file.size());
 
     if (!send_all(sock, &cmd_len, 4) ||
         !send_all(sock, remote_cmd_str.c_str(), remote_cmd_str.size()) ||
         !send_all(sock, &src_len, 4) ||
-        !send_all(sock, preprocessed_source.c_str(), preprocessed_source.size())) {
+        !send_all(sock, preprocessed_source.c_str(), preprocessed_source.size()) ||
+        !send_all(sock, &file_len, 4) ||
+        !send_all(sock, source_file.c_str(), source_file.size())) {
         std::cerr << "suco error: Sending data to helper failed. Falling back to local compile." << std::endl;
         close(sock);
         fallback_local(argv);
@@ -362,6 +369,10 @@ int main(int argc, char** argv) {
             // Set TTL of 7 days (604800 seconds)
             redisCommand(redis_write, "EXPIRE %s 604800", obj_key.c_str());
             redisCommand(redis_write, "EXPIRE %s 604800", log_key.c_str());
+
+            // Increment cache misses counter in Redis
+            redisReply* r_miss = (redisReply*)redisCommand(redis_write, "INCR suco:stats:cache_misses");
+            if (r_miss) freeReplyObject(r_miss);
 
             if (r1) freeReplyObject(r1);
             if (r2) freeReplyObject(r2);

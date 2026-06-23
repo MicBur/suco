@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY . .
 
-RUN mkdir build && cd build && \
+RUN mkdir -p build && cd build && \
     cmake -DCMAKE_BUILD_TYPE=Release .. && \
     make suco-helper
 
@@ -30,10 +30,13 @@ RUN apt-get update && apt-get install -y \
     libhiredis-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/build/suco-helper /usr/local/bin/suco-helper
+WORKDIR /usr/local/bin
 
-# Exposed port for the compilation service
-EXPOSE 9000
+COPY --from=builder /app/build/suco-helper /usr/local/bin/suco-helper
+COPY --from=builder /app/dashboard.html /usr/local/bin/dashboard.html
+
+# Exposed ports: 9000 (compiler service), 9001 (dashboard web server)
+EXPOSE 9000 9001
 
 # Set default port via environment variable
 ENV SUCO_PORT=9000

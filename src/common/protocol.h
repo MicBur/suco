@@ -14,6 +14,7 @@ constexpr uint16_t DEFAULT_PORT = 9000;
 struct CompileRequest {
     std::string compiler_command; // e.g. "g++ -O3 -std=c++17"
     std::string source_content;   // Preprocessed source code (.ii)
+    std::string filename;         // e.g. "main.cpp"
 };
 
 struct CompileResponse {

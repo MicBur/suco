@@ -44,5 +44,6 @@ add_executable(suco-helper
 )
 target_link_libraries(suco-helper
     OpenSSL::Crypto
+    ${HIREDIS_LIBRARY}
     pthread
 )

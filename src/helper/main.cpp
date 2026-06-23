@@ -9,8 +9,9 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/wait.h>
+#include <arpa/inet.h>
 #include "protocol.h"
+#include "web_server.h"
 
 // Send all bytes to socket
 bool send_all(int sock, const void* data, size_t len) {
@@ -136,6 +137,47 @@ void handle_client(int client_sock) {
         preprocessed_source.assign(src_buf.data(), src_len);
     }
 
+    uint32_t file_len = 0;
+    if (!read_all(client_sock, &file_len, 4)) {
+        close(client_sock);
+        return;
+    }
+    file_len = ntohl(file_len);
+
+    std::string filename;
+    if (file_len > 0) {
+        std::vector<char> file_buf(file_len);
+        if (!read_all(client_sock, file_buf.data(), file_len)) {
+            close(client_sock);
+            return;
+        }
+        filename.assign(file_buf.data(), file_len);
+    }
+
+    // IP-Adresse des Clients ermitteln
+    struct sockaddr_in peer_addr;
+    socklen_t peer_len = sizeof(peer_addr);
+    std::string client_ip = "127.0.0.1";
+    if (getpeername(client_sock, (struct sockaddr*)&peer_addr, &peer_len) == 0) {
+        client_ip = inet_ntoa(peer_addr.sin_addr);
+    }
+
+    // Job ID generieren
+    std::string job_id = std::to_string(rand()) + "_" + std::to_string(client_sock);
+
+    // Job registrieren
+    {
+        std::lock_guard<std::mutex> lock(suco::g_stats.mutex);
+        suco::g_stats.total_requests++;
+        suco::g_stats.active_jobs.push_back({
+            job_id,
+            client_ip,
+            filename,
+            client_cmd,
+            std::chrono::steady_clock::now()
+        });
+    }
+
     // 2. Perform Compilation
     // Write preprocessed source to temp file
     std::string suffix = ".ii";
@@ -195,6 +237,33 @@ void handle_client(int client_sock) {
         send_all(client_sock, bin_data.data(), bin_data.size());
     }
 
+    // Job entfernen und in Verlauf eintragen
+    {
+        std::lock_guard<std::mutex> lock(suco::g_stats.mutex);
+        for (auto it = suco::g_stats.active_jobs.begin(); it != suco::g_stats.active_jobs.end(); ++it) {
+            if (it->id == job_id) {
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - it->start_time
+                ).count();
+
+                suco::g_stats.recent_jobs.insert(suco::g_stats.recent_jobs.begin(), {
+                    filename,
+                    client_ip,
+                    exit_code,
+                    static_cast<int>(duration),
+                    false
+                });
+
+                if (suco::g_stats.recent_jobs.size() > 10) {
+                    suco::g_stats.recent_jobs.pop_back();
+                }
+
+                suco::g_stats.active_jobs.erase(it);
+                break;
+            }
+        }
+    }
+
     close(client_sock);
 }
 
@@ -235,6 +304,10 @@ int main() {
     }
 
     std::cout << "suco-helper: Compile daemon listening on port " << port << std::endl;
+
+    // Webserver auf Port 9001 im Hintergrund starten
+    std::thread web_thread(suco::run_web_server, 9001);
+    web_thread.detach();
 
     while (true) {
         struct sockaddr_in client_addr;
