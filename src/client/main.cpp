@@ -110,7 +110,45 @@ int connect_with_timeout(int sock, const struct sockaddr* addr, socklen_t addrle
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: suco <compiler> [flags] -c <source> -o <output>" << std::endl;
+        std::cerr << "       suco --monitor  (Opens the compilation grid dashboard in your browser)" << std::endl;
         return 1;
+    }
+
+    if (argc == 2 && (std::string(argv[1]) == "--monitor" || std::string(argv[1]) == "--dashboard")) {
+        // Get helper host
+        std::string helper_host = "127.0.0.1";
+        if (const char* env_host = std::getenv("SUCO_HELPER_HOST")) helper_host = env_host;
+        
+        std::string url = "http://" + helper_host + ":9001";
+        std::cout << "Opening SUCO Grid Monitor Dashboard at " << url << " ..." << std::endl;
+        
+        std::string cmd;
+        // Check if we are in WSL (Windows Subsystem for Linux)
+        std::ifstream version_file("/proc/version");
+        std::string version_str;
+        bool is_wsl = false;
+        if (version_file.is_open() && std::getline(version_file, version_str)) {
+            if (version_str.find("Microsoft") != std::string::npos || version_str.find("microsoft") != std::string::npos) {
+                is_wsl = true;
+            }
+        }
+
+        if (is_wsl) {
+            // Use cmd.exe to launch the browser on the Windows host
+            cmd = "cmd.exe /C start " + url + " 2>/dev/null";
+        } else {
+            #if defined(_WIN32)
+                cmd = "start " + url;
+            #elif defined(__APPLE__)
+                cmd = "open " + url;
+            #else
+                cmd = "xdg-open " + url + " 2>/dev/null || open " + url + " 2>/dev/null";
+            #endif
+        }
+        
+        int res = std::system(cmd.c_str());
+        (void)res;
+        return 0;
     }
 
     std::string compiler = argv[1];
