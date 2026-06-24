@@ -8,6 +8,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <chrono>
+#include <mutex>
+#include <algorithm>
 
 #ifdef _WIN32
     #include <process.h>
@@ -142,6 +144,60 @@ socket_t connect_with_timeout(const std::string& host, uint16_t port, int timeou
     return sock;
 }
 
+void query_compiler_metadata(const std::string& compiler, bool is_msvc, std::string& version, std::string& arch) {
+    static std::string cached_version;
+    static std::string cached_arch;
+    static std::once_flag flag;
+    
+    std::call_once(flag, [&]() {
+        if (is_msvc) {
+            // Run cl.exe /Bv to get the detailed toolchain version (includes frontends/backends/linker versions)
+            std::string cmd = "\"" + compiler + "\" /Bv 2>&1";
+            int exit_code = 0;
+            std::string out = run_local_capture(cmd, exit_code);
+            if (exit_code == 0 && !out.empty()) {
+                cached_version = out;
+                // Parse target architecture from output
+                if (out.find("ARM64") != std::string::npos || out.find("arm64") != std::string::npos) {
+                    cached_arch = "arm64";
+                } else if (out.find("x86") != std::string::npos || out.find("X86") != std::string::npos) {
+                    cached_arch = "x86";
+                } else {
+                    cached_arch = "x64";
+                }
+            } else {
+                cached_version = "MSVC Unknown";
+                cached_arch = "x64";
+            }
+        } else {
+            // GCC/Clang
+            int exit_code = 0;
+            std::string ver_out = run_local_capture("\"" + compiler + "\" -dumpfullversion 2>&1", exit_code);
+            if (exit_code == 0 && !ver_out.empty()) {
+                while (!ver_out.empty() && (ver_out.back() == '\n' || ver_out.back() == '\r')) {
+                    ver_out.pop_back();
+                }
+                cached_version = ver_out;
+            } else {
+                cached_version = "GCC Unknown";
+            }
+
+            std::string mach_out = run_local_capture("\"" + compiler + "\" -dumpmachine 2>&1", exit_code);
+            if (exit_code == 0 && !mach_out.empty()) {
+                while (!mach_out.empty() && (mach_out.back() == '\n' || mach_out.back() == '\r')) {
+                    mach_out.pop_back();
+                }
+                cached_arch = mach_out;
+            } else {
+                cached_arch = "x86_64";
+            }
+        }
+    });
+
+    version = cached_version;
+    arch = cached_arch;
+}
+
 int main(int argc, char** argv) {
     suco::SocketInit sock_init; // Automatically starts Winsock under Windows
 
@@ -269,20 +325,122 @@ int main(int argc, char** argv) {
         return pp_exit;
     }
 
-    // Clean compile flags for hashing
-    std::stringstream compile_flags;
-    for (const auto& flag : other_flags) {
-        // Only keep optimization, standard, and warning flags for caching signature
-        if (flag.rfind("-O", 0) == 0 || flag.rfind("-W", 0) == 0 || 
-            flag.rfind("-std=", 0) == 0 || flag.rfind("/O", 0) == 0 || 
-            flag.rfind("/W", 0) == 0 || flag.rfind("/std:", 0) == 0) {
-            compile_flags << flag << " ";
+    // Extrahiere Defines, Include-Pfade, Standard und normalisierte Flags
+    std::vector<std::string> sorted_defines;
+    std::vector<std::string> sorted_include_paths;
+    std::string lang_standard = "";
+    std::vector<std::string> clean_flags;
+
+    for (size_t i = 0; i < other_flags.size(); ++i) {
+        const std::string& flag = other_flags[i];
+        if (is_msvc) {
+            if (flag.rfind("/D", 0) == 0 || flag.rfind("-D", 0) == 0) {
+                if (flag.size() == 2) {
+                    if (i + 1 < other_flags.size()) {
+                        sorted_defines.push_back(flag + other_flags[i + 1]);
+                        i++;
+                    } else {
+                        sorted_defines.push_back(flag);
+                    }
+                } else {
+                    sorted_defines.push_back(flag);
+                }
+            } else if (flag.rfind("/I", 0) == 0 || flag.rfind("-I", 0) == 0) {
+                if (flag.size() == 2) {
+                    if (i + 1 < other_flags.size()) {
+                        sorted_include_paths.push_back(flag + other_flags[i + 1]);
+                        i++;
+                    } else {
+                        sorted_include_paths.push_back(flag);
+                    }
+                } else {
+                    sorted_include_paths.push_back(flag);
+                }
+            } else if (flag.rfind("/std:", 0) == 0 || flag.rfind("-std:", 0) == 0) {
+                lang_standard = flag;
+            } else if (flag.rfind("/O", 0) == 0 || flag.rfind("-O", 0) == 0 ||
+                       flag.rfind("/W", 0) == 0 || flag.rfind("-W", 0) == 0) {
+                clean_flags.push_back(flag);
+            }
+        } else {
+            // GCC/Clang
+            if (flag.rfind("-D", 0) == 0) {
+                if (flag.size() == 2) {
+                    if (i + 1 < other_flags.size()) {
+                        sorted_defines.push_back(flag + other_flags[i + 1]);
+                        i++;
+                    } else {
+                        sorted_defines.push_back(flag);
+                    }
+                } else {
+                    sorted_defines.push_back(flag);
+                }
+            } else if (flag.rfind("-I", 0) == 0) {
+                if (flag.size() == 2) {
+                    if (i + 1 < other_flags.size()) {
+                        sorted_include_paths.push_back(flag + other_flags[i + 1]);
+                        i++;
+                    } else {
+                        sorted_include_paths.push_back(flag);
+                    }
+                } else {
+                    sorted_include_paths.push_back(flag);
+                }
+            } else if (flag.rfind("-std=", 0) == 0) {
+                lang_standard = flag;
+            } else if (flag.rfind("-O", 0) == 0 || flag.rfind("-W", 0) == 0) {
+                clean_flags.push_back(flag);
+            }
         }
     }
-    std::string flags_str = compile_flags.str();
 
-    // Calculate SHA-256 hash signature of code + flags
-    std::string source_hash = suco::calculate_sha256(preprocessed_source, flags_str);
+    // Sortierung für Reihenfolgeunabhängigkeit
+    std::sort(sorted_defines.begin(), sorted_defines.end());
+    std::sort(sorted_include_paths.begin(), sorted_include_paths.end());
+    std::sort(clean_flags.begin(), clean_flags.end());
+
+    // Erzeuge delimitierte Strings mit 0x1F
+    std::string sorted_defines_str;
+    for (size_t i = 0; i < sorted_defines.size(); ++i) {
+        if (i > 0) sorted_defines_str += '\x1F';
+        sorted_defines_str += sorted_defines[i];
+    }
+
+    std::string sorted_include_paths_str;
+    for (size_t i = 0; i < sorted_include_paths.size(); ++i) {
+        if (i > 0) sorted_include_paths_str += '\x1F';
+        sorted_include_paths_str += sorted_include_paths[i];
+    }
+
+    std::string flags_str;
+    for (size_t i = 0; i < clean_flags.size(); ++i) {
+        if (i > 0) flags_str += ' ';
+        flags_str += clean_flags[i];
+    }
+    // Wenn ein Language Standard existiert, fügen wir ihn zu den Remote-Flags hinzu
+    if (!lang_standard.empty()) {
+        if (!flags_str.empty()) flags_str += ' ';
+        flags_str += lang_standard;
+    }
+
+    // Abfrage der Compiler-Metadaten
+    std::string compiler_version;
+    std::string target_architecture;
+    query_compiler_metadata(compiler, is_msvc, compiler_version, target_architecture);
+
+    // Normalisiere die präprozessierte Quelldatei
+    std::string normalized_source = suco::normalize_preprocessed_source(preprocessed_source);
+
+    // Berechne den kollisionsfreien SHA-256 Hash
+    std::string source_hash = suco::calculate_sha256(
+        normalized_source,
+        compiler_version,
+        target_architecture,
+        lang_standard,
+        sorted_defines_str,
+        sorted_include_paths_str,
+        flags_str
+    );
 
     // Get coordinator host
     std::string coordinator_host = "127.0.0.1";

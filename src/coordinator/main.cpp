@@ -571,7 +571,7 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         }
 
         if (exit_code == 0 && !bin_data.empty()) {
-            g_cache->put(hash, bin_data, log_str);
+            g_cache->put(hash, bin_data, log_str, filename, command);
         }
 
         g_state.mutex.lock();

@@ -128,8 +128,36 @@ public:
         return true;
     }
 
+    // Helper to escape special characters for JSON format
+    std::string escape_json(const std::string& input) {
+        std::string output;
+        output.reserve(input.size());
+        for (char c : input) {
+            if (c == '\\') {
+                output += "\\\\";
+            } else if (c == '"') {
+                output += "\\\"";
+            } else if (c == '/') {
+                output += "\\/";
+            } else if (c == '\b') {
+                output += "\\b";
+            } else if (c == '\f') {
+                output += "\\f";
+            } else if (c == '\n') {
+                output += "\\n";
+            } else if (c == '\r') {
+                output += "\\r";
+            } else if (c == '\t') {
+                output += "\\t";
+            } else {
+                output += c;
+            }
+        }
+        return output;
+    }
+
     // Store compiled results to cache
-    void put(const std::string& hash, const std::vector<uint8_t>& obj_data, const std::string& log_data) {
+    void put(const std::string& hash, const std::vector<uint8_t>& obj_data, const std::string& log_data, const std::string& source_file = "", const std::string& compiler_command = "") {
         std::lock_guard<std::mutex> lock(mutex_);
         auto paths = get_cache_paths(hash);
         if (paths.first.empty()) return;
@@ -151,6 +179,22 @@ public:
                 log_file << log_data;
                 log_file.close();
             }
+        }
+
+        // Write meta file
+        std::string meta_path = paths.first.substr(0, paths.first.size() - 2) + ".meta";
+        std::ofstream meta_file(meta_path);
+        if (meta_file.is_open()) {
+            auto now = std::chrono::system_clock::now();
+            auto epoch = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+            meta_file << "{\n";
+            meta_file << "  \"hash\": \"" << hash << "\",\n";
+            meta_file << "  \"source_file\": \"" << escape_json(source_file) << "\",\n";
+            meta_file << "  \"compiler_command\": \"" << escape_json(compiler_command) << "\",\n";
+            meta_file << "  \"timestamp\": " << epoch << ",\n";
+            meta_file << "  \"binary_size\": " << obj_data.size() << "\n";
+            meta_file << "}\n";
+            meta_file.close();
         }
 
         // Trigger LRU Cleanup in background if threshold is crossed
@@ -201,16 +245,29 @@ public:
             
             if (std::filesystem::remove(file.path)) {
                 current_size -= file.size;
-                // Try to remove corresponding log or obj file if orphaned
-                std::string sibling;
+                
+                // Try to remove corresponding log, obj or meta sibling file if orphaned
+                std::string sibling1, sibling2;
                 if (file.path.rfind(".o") != std::string::npos) {
-                    sibling = file.path.substr(0, file.path.size() - 2) + ".log";
+                    sibling1 = file.path.substr(0, file.path.size() - 2) + ".log";
+                    sibling2 = file.path.substr(0, file.path.size() - 2) + ".meta";
                 } else if (file.path.rfind(".log") != std::string::npos) {
-                    sibling = file.path.substr(0, file.path.size() - 4) + ".o";
+                    sibling1 = file.path.substr(0, file.path.size() - 4) + ".o";
+                    sibling2 = file.path.substr(0, file.path.size() - 4) + ".meta";
+                } else if (file.path.rfind(".meta") != std::string::npos) {
+                    sibling1 = file.path.substr(0, file.path.size() - 5) + ".o";
+                    sibling2 = file.path.substr(0, file.path.size() - 5) + ".log";
                 }
-                if (!sibling.empty() && std::filesystem::exists(sibling)) {
-                    uint64_t sib_size = std::filesystem::file_size(sibling);
-                    if (std::filesystem::remove(sibling)) {
+                
+                if (!sibling1.empty() && std::filesystem::exists(sibling1)) {
+                    uint64_t sib_size = std::filesystem::file_size(sibling1);
+                    if (std::filesystem::remove(sibling1)) {
+                        current_size -= sib_size;
+                    }
+                }
+                if (!sibling2.empty() && std::filesystem::exists(sibling2)) {
+                    uint64_t sib_size = std::filesystem::file_size(sibling2);
+                    if (std::filesystem::remove(sibling2)) {
                         current_size -= sib_size;
                     }
                 }
