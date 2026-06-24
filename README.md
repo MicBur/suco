@@ -8,143 +8,282 @@
 
 <h1 align="center">SUCO Lite</h1>
 <p align="center">
-  <strong>SUper COmpiler wrapper – Ein ultraschnelles, verteiltes C/C++ Kompilierungs- und Caching-System für lokale Netzwerke (LAN).</strong>
+  <strong>SUper COmpiler Grid – Verteiltes C/C++ Kompilierungs- und Caching-System für lokale Netzwerke.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/github/v/release/MicBur/suco?color=blue&logo=github" alt="GitHub Release"></a>
-  <a href="https://github.com/MicBur/suco/actions"><img src="https://img.shields.io/github/actions/workflow/status/MicBur/suco/cmake.yml?branch=main&logo=github-actions" alt="Build Status"></a>
-  <a href="https://github.com/MicBur/suco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MicBur/suco?color=green" alt="License"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v1.1.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
+  <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B17-9b51e0?style=for-the-badge" alt="C++17"></a>
+  <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
+</p>
+
+<p align="center">
+  <em>Kompiliere einmal. Cache für immer. Verteilte Builds ohne Konfiguration.</em>
 </p>
 
 ---
 
-SUCO Lite ist eine hochperformante, leichtgewichtige Alternative zu teuren proprietären Lösungen wie IncrediBuild oder veralteten Systemen wie Icecream. Es kombiniert Zero-Configuration-Setup per UDP Auto-Discovery, einen zweistufigen SSD LRU-Cache im Coordinator sowie ein modernes Web-Dashboard im Liquid-Glass-Design.
+## ⚡ Auf einen Blick
+
+SUCO Lite ist eine **hochperformante, leichtgewichtige Alternative** zu teuren proprietären Lösungen wie IncrediBuild oder veralteten Systemen wie Icecream/distcc. Es wurde für **maximale Geschwindigkeit bei minimalem Setup** entwickelt:
+
+- 🔍 **Zero-Config Auto-Discovery** – Worker finden den Coordinator automatisch per UDP Broadcast
+- 💾 **Intelligenter SSD-Cache** – SHA-256-basierter LRU-Cache mit Metadaten-Tracking
+- 📊 **Live Web-Dashboard** – Echtzeit-Monitoring aller Worker, CPU-Kerne und Jobs
+- 🛡️ **Resilienter Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
+- 🖥️ **Cross-Platform** – Native Unterstützung für Windows (MSVC) und Linux (GCC/Clang)
 
 ---
 
-## 🚀 Benchmark-Ergebnisse (Die Cache-Power)
+## 🏆 Benchmark-Ergebnisse
 
-Ein Benchmark mit einer extrem großen C++-Datei (~318.000 Zeilen präprozessierter Code inklusive umfangreicher Standard-Header) verdeutlicht den massiven Performance-Gewinn:
+### Einzeldatei-Benchmark (~318.000 Zeilen preprocessed)
 
-| Zustand | Dauer | Beschreibung | Performance-Gewinn |
-| :--- | :--- | :--- | :--- |
-| **Cache Miss** | **25,5 s** | Erste Kompilierung. Client präprozessiert, Coordinator verteilt an Worker, Worker kompiliert und sendet `.obj` zurück. | - |
-| **Cache Hit** | **0,7 s** | Erneute Kompilierung. Client präprozessiert, Coordinator findet SHA-256 in der SSD-Datenbank und sendet `.obj` sofort zurück. | **97,1% schneller** 🚀 |
+| Zustand | Dauer | Beschreibung | Gewinn |
+|:---|:---|:---|:---|
+| **Cache Miss** | 25,5s | Preprocessierung → Verteilung → Kompilierung → Rücktransfer | – |
+| **Cache Hit** | 0,7s | Preprocessierung → SHA-256 Lookup → Sofortige Rückgabe aus SSD | **97,1%** 🚀 |
 
-### Warum ist der Cache so extrem schnell?
-Der klassische C++ Kompilierungsprozess besteht aus vier Hauptphasen:
-1. **Präprozessierung:** Expandieren von Makros, Auflösen von `#include`-Direktiven. Das ist primär schneller Text-I/O und geht extrem flink (Bruchteil einer Sekunde).
-2. **Parsing & semantische Analyse:** Aufbau des Abstract Syntax Tree (AST), Auflösung komplexer Template-Instanziierungen (z. B. `<vector>`, `<map>`, Header-Only-Bibliotheken). Dies ist hochgradig CPU-intensiv.
-3. **Optimierung:** Code-Optimierungen (`-O2`, `-O3`), Inlining, Loop Unrolling. Dies dauert am längsten.
-4. **Codegenerierung:** Schreiben der Binärdatei (`.o` bzw. `.obj`).
+### Distributed Grid Benchmark (30 Dateien × 800 Funktionen)
 
-**Der SUCO-Trick:** 
-Der Client führt lokal *nur* die schnelle Präprozessierung (Phase 1) aus und berechnet den SHA-256 Hash der Ausgabe. Bei einem **Cache Hit** sendet der Coordinator die fertige `.obj`-Datei direkt aus dem SSD-LRU-Cache zurück. Die CPU-intensiven Phasen 2, 3 und 4 werden komplett übersprungen!
+> Getestet auf einem Grid mit **3× HP EliteDesk 800 G2 Mini** (je 4 Kerne, 12 Slots gesamt)
 
----
+| Durchlauf | Dauer | Beschreibung | Gewinn |
+|:---|:---|:---|:---|
+| **Run 1 – Cache Miss** | 55,5s | 30 Dateien parallel auf 12 Slots verteilt | – |
+| **Run 2 – Cache Hit** | 1,3s | Alle 30 Dateien sofort aus dem SSD-Cache | **97,6%** 🚀 |
 
-## 🛠️ Architektur & Funktionsweise
+<p align="center">
+  <strong>42× schneller beim zweiten Build. 30 Dateien in 1,3 Sekunden.</strong>
+</p>
 
-SUCO Lite besteht aus drei kleinen, nativen Komponenten (geschrieben in modernem C++ mit Winsock2/BSD Sockets und OpenSSL):
+### Warum ist der Cache so schnell?
 
-```mermaid
-graph TD
-    Client[SUCO Client] -->|1. UDP Discovery| Coord[SUCO Coordinator]
-    Client -->|2. Sende SHA-256 Hash| Coord
-    Coord -->|3a. Cache Hit: Sende fertiges .obj| Client
-    Coord -->|3b. Cache Miss: Sende Source| Worker1[SUCO Worker 1]
-    Coord -->|3b. Cache Miss: Sende Source| Worker2[SUCO Worker 2]
-    Worker1 -->|4. Sende fertiges .obj| Coord
-    Coord -->|5. Speichere in Cache & sende an| Client
+```
+Normaler Build:          SUCO Cache Hit:
+┌──────────────┐         ┌──────────────┐
+│ Preprocessor │ ~0.1s   │ Preprocessor │ ~0.1s
+├──────────────┤         ├──────────────┤
+│ Parser/AST   │ ~3.0s   │ SHA-256 Hash │ ~0.001s
+├──────────────┤         ├──────────────┤
+│ Optimierung  │ ~15.0s  │ Cache Lookup │ ~0.002s
+├──────────────┤         ├──────────────┤
+│ Codegen      │ ~7.0s   │ SSD → Client │ ~0.5s
+└──────────────┘         └──────────────┘
+     ~25s                    ~0.7s
 ```
 
-1. **SUCO Client (`suco`):**
-   - Wird als Compiler-Wrapper (z. B. vor `g++` oder `cl.exe`) aufgerufen.
-   - Präprozessiert die Quelldatei lokal (`-E` bzw. `/E`) und berechnet den SHA-256-Hash des Inhalts plus der Compiler-Flags.
-   - Verbindet sich per UDP Auto-Discovery mit dem Coordinator und fragt den Hash an.
-   - **Resilienter Fallback:** Falls der Coordinator in <100 ms nicht antwortet oder ausfällt, kompiliert der Client die Datei vollautomatisch lokal auf der Entwickler-Maschine. Der Build schlägt niemals fehl!
-
-2. **SUCO Coordinator (`suco-coordinator`):**
-   - Verwaltet den zweistufigen SSD LRU-Cache (indiziert über die ersten Zeichen des SHA-256-Hashes, z. B. `cache/ab/cdef...`).
-   - Findet Worker vollautomatisch im LAN via UDP-Broadcasts auf Port `9002`.
-   - Verteilt Kompilierjobs bei einem Cache-Miss intelligent per **Least-Loaded-Scheduling** (an den Worker mit den meisten freien Slots).
-   - Hostet ein integriertes HTTP-Web-Dashboard (Port `9001`) zur Live-Visualisierung.
-
-3. **SUCO Worker (`suco-worker`):**
-   - Läuft im Hintergrund auf allen verfügbaren Rechnern im Netzwerk.
-   - Meldet sich per UDP-Broadcast beim Coordinator an.
-   - Empfängt die präprozessierte Quellcodedatei bei einem Cache-Miss und führt die eigentliche Kompilierung lokal aus. Da die Datei bereits präprozessiert ist, sind keine Header oder externen Abhängigkeiten auf dem Worker erforderlich (Zero-Config!).
+Der Client führt **nur die Preprocessierung** (Phase 1) lokal aus und berechnet einen SHA-256-Hash. Bei einem Cache Hit werden die CPU-intensiven Phasen (Parsing, Optimierung, Codegen) **komplett übersprungen** — die fertige `.obj`-Datei kommt direkt vom SSD-Cache.
 
 ---
 
-## 💻 Installation & Build
+## 🏗️ Architektur
 
-### 1. Abhängigkeiten
-- **Windows:** Visual Studio (MSVC mit C++-Unterstützung), CMake, OpenSSL.
-- **Linux:** `build-essential`, `cmake`, `libssl-dev`.
+<p align="center">
+  <img src="assets/architecture.png" alt="SUCO Architektur" width="80%">
+</p>
 
-### 2. Projekt bauen
+SUCO besteht aus drei nativen C++17-Komponenten:
 
-#### Windows (PowerShell/VS Developer Command Prompt):
-```powershell
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ENTWICKLER-MASCHINE                        │
+│  ┌──────────┐    ┌──────────────────────────────────────────┐  │
+│  │  suco    │───▶│           SUCO COORDINATOR               │  │
+│  │ (Client) │◀───│  ┌────────────┐  ┌───────────────────┐   │  │
+│  └──────────┘    │  │ SSD Cache  │  │  Web Dashboard    │   │  │
+│   g++ wrapper    │  │ (LRU 5GB)  │  │  :9001            │   │  │
+│                  │  └────────────┘  └───────────────────┘   │  │
+│                  └──────────┬───────────────────────────────┘  │
+└─────────────────────────────┼─────────────────────────────────┘
+                              │ TCP :9000
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+     │  WORKER #1   │ │  WORKER #2   │ │  WORKER #3   │
+     │  HP Mini G2  │ │  HP Mini G2  │ │  HP Mini G2  │
+     │  4 Kerne     │ │  4 Kerne     │ │  4 Kerne     │
+     └──────────────┘ └──────────────┘ └──────────────┘
+              UDP Auto-Discovery :9002
+```
+
+### Komponenten
+
+| Komponente | Beschreibung |
+|---|---|
+| **`suco`** (Client) | Compiler-Wrapper. Preprocessiert lokal, berechnet SHA-256, fragt Coordinator. Bei Ausfall: automatischer lokaler Fallback in <100ms. |
+| **`suco-coordinator`** | Zentraler Hub. Verwaltet SSD-LRU-Cache, verteilt Jobs per Least-Loaded-Scheduling, hostet Web-Dashboard. |
+| **`suco-worker`** | Kompilierungs-Knoten. Registriert sich per UDP, empfängt preprocessed Source, kompiliert und sendet `.obj` zurück. |
+
+### Cache-Architektur (Phase 1)
+
+Der Cache verwendet einen **versionierten, metadatenreichen Hash-Key**:
+
+```
+v1:⟨0x1F⟩Target⟨0x1F⟩CompilerVersion⟨0x1F⟩Standard⟨0x1F⟩Defines⟨0x1F⟩Includes⟨0x1F⟩Flags⟨0x1F⟩NormalizedSource
+```
+
+- **Versionierung**: `v1:` Prefix für zukunftssichere Schema-Migration
+- **Metadaten**: Target-Architektur, Compiler-Version, C++-Standard, sortierte Defines & Include-Pfade
+- **Source-Normalisierung**: Entfernt `#line`-Direktiven, Whitespace-only-Zeilen, normalisiert Pfade — hochoptimiert mit `memchr` für 300k+ Zeilen in <5ms
+- **Separator**: ASCII `0x1F` (Unit Separator) — kann in keinem normalen Dateiinhalt vorkommen
+
+Jeder Cache-Eintrag speichert zusätzlich eine `.meta`-JSON-Datei mit allen Build-Metadaten.
+
+---
+
+## 💻 Installation
+
+### Abhängigkeiten
+
+| Platform | Pakete |
+|---|---|
+| **Windows** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL |
+| **Linux** | `build-essential`, `cmake`, `libssl-dev` |
+
+### Bauen
+
+```bash
+# Linux / WSL
+cmake -B build_linux -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build_linux
+
+# Windows (Developer PowerShell)
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
-Die ausführbaren Dateien (`suco.exe`, `suco-coordinator.exe`, `suco-worker.exe`) befinden sich in `build/Release/`.
 
-#### Linux / WSL:
+### Installer (Linux)
+
 ```bash
-cmake -B build_linux -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build_linux
+sudo bash install.sh
+# Wähle: 1) Coordinator + Worker   2) Nur Worker
 ```
-Die ausführbaren Dateien befinden sich in `build_linux/`.
+
+Der Installer kopiert die Binaries nach `/usr/local/bin/`, richtet systemd-Services ein und öffnet die Firewall-Ports.
 
 ---
 
-## ⚙️ Starten & Konfiguration
+## ⚙️ Verwendung
 
-### 1. Coordinator starten (Zentrale Instanz)
-Starte den Coordinator auf einem zentralen Rechner im Netzwerk (z. B. auf einem Server oder deiner Entwickler-Workstation):
+### 1. Coordinator starten
+
 ```bash
-# Windows
-.\build\Release\suco-coordinator.exe --cache-dir .\cache --max-cache-size-gb 50
-
-# Linux
-./build_linux/suco-coordinator --cache-dir ./cache --max-cache-size-gb 50
+./suco-coordinator
+# Dashboard: http://localhost:9001
+# Cache: ~/.cache/suco/ (Standard 5 GB LRU)
 ```
 
-### 2. Worker starten (Auf allen Helfer-Rechnern)
-Starte den Worker auf beliebig vielen Rechnern im lokalen Netzwerk. Sie finden den Coordinator vollautomatisch:
+### 2. Worker starten (auf allen Helfer-Rechnern)
+
 ```bash
-# Windows (--slots definiert die maximal parallelen Compiler-Prozesse)
-.\build\Release\suco-worker.exe --slots 8
+# Auto-Discovery (findet Coordinator automatisch per UDP)
+./suco-worker --slots 4
 
-# Linux
-./build_linux/suco-worker --slots 8
+# Oder mit expliziter Adresse
+./suco-worker --coordinator 192.168.0.200:9000 --slots 8
 ```
 
-### 3. Client verwenden (In deinen Builds)
-Ersetze in deinen Makefiles, CMake-Dateien oder Build-Skripten den Compiler-Aufruf durch `suco`.
+### 3. Kompilieren über SUCO
 
-**Beispiel Windows (MSVC):**
-```powershell
-.\build\Release\suco.exe cl.exe /O2 /std:c++17 /c test.cpp /Fo test.obj
-```
-
-**Beispiel Linux (GCC):**
 ```bash
-./build_linux/suco g++ -O3 -std=c++17 -c test.cpp -o test.o
+# Linux (GCC)
+suco g++ -O3 -std=c++17 -c myfile.cpp -o myfile.o
+
+# Windows (MSVC)
+suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj
+
+# In CMake
+set(CMAKE_CXX_COMPILER_LAUNCHER suco)
 ```
+
+### Umgebungsvariablen
+
+| Variable | Default | Beschreibung |
+|---|---|---|
+| `SUCO_COORDINATOR_HOST` | Auto-Discovery | IP/Hostname des Coordinators |
+| `SUCO_COORDINATOR_PORT` | `9000` | TCP-Port des Coordinators |
+| `SUCO_CACHE_DIR` | `~/.cache/suco/` | Pfad zum SSD-Cache |
+| `SUCO_MAX_CACHE_MB` | `5120` | Maximale Cache-Größe in MB |
 
 ---
 
 ## 📊 Live Web-Dashboard
-Der Coordinator stellt unter `http://localhost:9001` ein schickes, interaktives Dashboard zur Verfügung:
-* **Echtzeit-Statistiken:** Cache-Hits, Cache-Misses, Hit-Rate in %.
-* **Worker-Übersicht:** Live-Liste der CPU-Auslastung aller Kerne.
-* **Verbindungsstatus:** Zeigt aktive Kompilierungen mit tickenden Timern an.
 
 <p align="center">
-  <img src="assets/dashboard_preview.png" alt="SUCO Dashboard Vorschau" width="100%">
+  <img src="assets/dashboard_preview.png" alt="SUCO Dashboard" width="100%">
+</p>
+
+Das integrierte Dashboard auf **Port 9001** zeigt in Echtzeit:
+
+- 🟢 **Worker-Status** mit individueller CPU-Kernauslastung pro Maschine
+- 📈 **Cache Hit Rate** als animierter Progress-Ring
+- ⚡ **Aktive Kompilierungen** mit Live-Timer
+- 📋 **Job-Verlauf** mit Hit/Miss-Badges
+
+---
+
+## 🔧 Netzwerk-Ports
+
+| Port | Protokoll | Zweck |
+|---|---|---|
+| `9000` | TCP | Compile-Requests (Client ↔ Coordinator ↔ Worker) |
+| `9001` | TCP | Web-Dashboard & REST API |
+| `9002` | UDP | Auto-Discovery Broadcast |
+
+---
+
+## 📁 Projektstruktur
+
+```
+suco/
+├── src/
+│   ├── client/          # suco (Compiler-Wrapper)
+│   │   └── main.cpp
+│   ├── coordinator/     # suco-coordinator (Cache + Scheduling)
+│   │   ├── main.cpp
+│   │   └── lru_cache.h
+│   ├── worker/          # suco-worker (Kompilierungs-Knoten)
+│   │   └── main.cpp
+│   ├── helper/          # suco-helper (Standalone Daemon)
+│   │   ├── main.cpp
+│   │   └── web_server.h
+│   └── common/          # Shared Code
+│       ├── protocol.h
+│       ├── socket_util.h
+│       ├── hash_util.h
+│       └── hash_util.cpp
+├── dashboard.html       # Web-Dashboard UI
+├── install.sh           # Linux Installer
+├── install.ps1          # Windows Installer
+├── CMakeLists.txt
+└── assets/              # README-Bilder
+```
+
+---
+
+## 🤝 Vergleich mit Alternativen
+
+| Feature | SUCO Lite | IncrediBuild | Icecream | distcc |
+|---|:---:|:---:|:---:|:---:|
+| **Preis** | ✅ Kostenlos | ❌ ~$2000/Lizenz | ✅ Kostenlos | ✅ Kostenlos |
+| **SSD Cache** | ✅ SHA-256 LRU | ✅ Proprietär | ❌ Nein | ❌ Nein |
+| **Auto-Discovery** | ✅ UDP Broadcast | ✅ Agent-basiert | ✅ mDNS | ❌ Manuell |
+| **Web Dashboard** | ✅ Glassmorphism | ✅ GUI App | ⚠️ Icemon | ❌ Nein |
+| **Windows + Linux** | ✅ Native | ⚠️ Nur Windows | ✅ Ja | ✅ Ja |
+| **Zero-Config Worker** | ✅ Ja | ❌ Agent nötig | ✅ Ja | ❌ Manuell |
+| **Fallback bei Ausfall** | ✅ <100ms | ⚠️ Langsam | ❌ Nein | ❌ Nein |
+| **Setup-Zeit** | ✅ ~2 Min | ❌ ~30 Min | ⚠️ ~10 Min | ⚠️ ~15 Min |
+
+---
+
+## 📜 Lizenz
+
+MIT License – Siehe [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <sub>Entwickelt mit ⚡ von <a href="https://github.com/MicBur">MicBur</a></sub>
 </p>

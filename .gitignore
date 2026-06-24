@@ -14,3 +14,9 @@ nohup.out
 
 # Ignore test executables/runs if any
 test.cpp
+
+# Ignore large generated benchmark files
+benchmark_large.cpp
+benchmark_large.obj
+test.o
+massive_benchmark/
