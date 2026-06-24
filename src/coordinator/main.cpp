@@ -68,6 +68,12 @@ struct ActiveJob {
     std::chrono::steady_clock::time_point start_time;
 };
 
+struct RecentJob {
+    std::string filename;
+    int32_t exit_code;
+    bool cache_hit;
+};
+
 // Coordinator Global State
 struct CoordinatorState {
     std::mutex mutex;
@@ -81,7 +87,11 @@ struct CoordinatorState {
     
     // Jobs currently running on workers
     std::vector<ActiveJob> active_jobs;
+    
+    // History of recently completed jobs
+    std::vector<RecentJob> recent_jobs;
 };
+
 
 CoordinatorState g_state;
 LruCache* g_cache = nullptr;
@@ -266,6 +276,20 @@ void run_web_server(uint16_t port) {
                             if (i + 1 < g_state.workers.size()) json << ",";
                             json << "\n";
                         }
+                        json << "  ],\n";
+
+                        // Recent finished compile jobs
+                        json << "  \"recent_jobs\": [\n";
+                        for (size_t i = 0; i < g_state.recent_jobs.size(); ++i) {
+                            const auto& rj = g_state.recent_jobs[i];
+                            json << "    {\n";
+                            json << "      \"filename\": \"" << rj.filename << "\",\n";
+                            json << "      \"exit_code\": " << rj.exit_code << ",\n";
+                            json << "      \"cache_hit\": " << (rj.cache_hit ? "true" : "false") << "\n";
+                            json << "    }";
+                            if (i + 1 < g_state.recent_jobs.size()) json << ",";
+                            json << "\n";
+                        }
                         json << "  ]\n";
                     }
                     json << "}";
@@ -327,6 +351,19 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         }
         std::string hash(hash_buf.data(), hash_len);
 
+        uint32_t query_file_len = 0;
+        if (!suco::read_all(client_sock, &query_file_len, 4)) {
+            close_socket(client_sock);
+            return;
+        }
+        query_file_len = ntohl(query_file_len);
+        std::vector<char> query_file_buf(query_file_len);
+        if (!suco::read_all(client_sock, query_file_buf.data(), query_file_len)) {
+            close_socket(client_sock);
+            return;
+        }
+        std::string query_filename(query_file_buf.data(), query_file_len);
+
         std::vector<uint8_t> cached_obj;
         std::string cached_log;
         bool cache_found = g_cache->get(hash, cached_obj, cached_log);
@@ -336,6 +373,12 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
                 std::lock_guard<std::mutex> lock(g_state.mutex);
                 g_state.total_requests++;
                 g_state.cache_hits++;
+                
+                RecentJob rj{ query_filename, 0, true };
+                g_state.recent_jobs.push_back(rj);
+                if (g_state.recent_jobs.size() > 20) {
+                    g_state.recent_jobs.erase(g_state.recent_jobs.begin());
+                }
             }
             uint32_t resp_type = htonl(suco::PACKET_CACHE_HIT);
             uint32_t log_len = htonl(static_cast<u_long>(cached_log.size()));
@@ -517,6 +560,12 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
                 g_state.active_jobs.erase(it);
                 break;
             }
+        }
+
+        RecentJob rj{ filename, exit_code, false };
+        g_state.recent_jobs.push_back(rj);
+        if (g_state.recent_jobs.size() > 20) {
+            g_state.recent_jobs.erase(g_state.recent_jobs.begin());
         }
 
         int32_t exit_code_net = htonl(exit_code);

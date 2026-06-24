@@ -303,12 +303,15 @@ int main(int argc, char** argv) {
     std::string remote_cmd_str = remote_cmd.str();
 
     // 1. Send CACHE_QUERY packet
-    // Format: [4 bytes: type = CACHE_QUERY] + [4 bytes: hash_len = 64] + [hash_string]
+    // Format: [4 bytes: type = CACHE_QUERY] + [4 bytes: hash_len = 64] + [hash_string] + [4 bytes: file_len] + [file_string]
     uint32_t type = htonl(suco::PACKET_CACHE_QUERY);
     uint32_t hash_len = htonl(source_hash.size());
+    uint32_t file_len = htonl(source_file.size());
     if (!suco::send_all(sock, &type, 4) ||
         !suco::send_all(sock, &hash_len, 4) ||
-        !suco::send_all(sock, source_hash.c_str(), source_hash.size())) {
+        !suco::send_all(sock, source_hash.c_str(), source_hash.size()) ||
+        !suco::send_all(sock, &file_len, 4) ||
+        !suco::send_all(sock, source_file.c_str(), source_file.size())) {
         close_socket(sock);
         return run_fallback_local(argv);
     }
