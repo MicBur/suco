@@ -155,6 +155,32 @@ void run_worker_monitor() {
     }
 }
 
+std::string escape_json_string(const std::string& input) {
+    std::string output;
+    for (char c : input) {
+        if (c == '\\') {
+            output += "\\\\";
+        } else if (c == '"') {
+            output += "\\\"";
+        } else if (c == '/') {
+            output += "\\/";
+        } else if (c == '\b') {
+            output += "\\b";
+        } else if (c == '\f') {
+            output += "\\f";
+        } else if (c == '\n') {
+            output += "\\n";
+        } else if (c == '\r') {
+            output += "\\r";
+        } else if (c == '\t') {
+            output += "\\t";
+        } else {
+            output += c;
+        }
+    }
+    return output;
+}
+
 // REST API Server (Port 9001) for Dashboard
 void run_web_server(uint16_t port) {
     socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -247,7 +273,7 @@ void run_web_server(uint16_t port) {
                             const auto& job = g_state.active_jobs[i];
                             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - job.start_time).count();
                             json << "    {\n";
-                            json << "      \"filename\": \"" << job.filename << "\",\n";
+                            json << "      \"filename\": \"" << escape_json_string(job.filename) << "\",\n";
                             json << "      \"worker_ip\": \"" << job.worker_ip << "\",\n";
                             json << "      \"duration_ms\": " << elapsed << "\n";
                             json << "    }";
@@ -283,7 +309,7 @@ void run_web_server(uint16_t port) {
                         for (size_t i = 0; i < g_state.recent_jobs.size(); ++i) {
                             const auto& rj = g_state.recent_jobs[i];
                             json << "    {\n";
-                            json << "      \"filename\": \"" << rj.filename << "\",\n";
+                            json << "      \"filename\": \"" << escape_json_string(rj.filename) << "\",\n";
                             json << "      \"exit_code\": " << rj.exit_code << ",\n";
                             json << "      \"cache_hit\": " << (rj.cache_hit ? "true" : "false") << "\n";
                             json << "    }";
