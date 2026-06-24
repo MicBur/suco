@@ -398,9 +398,9 @@
             <div class="card cpu-card">
                 <div class="card-title" style="display: flex; align-items: center; gap: 0.5rem;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="15" x2="23" y2="15"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="15" x2="4" y2="15"></line></svg>
-                    <span>CPU-Kerne Auslastung (Host)</span>
+                    <span>Verteilte Compiler-Worker (Grid-Status)</span>
                 </div>
-                <div class="cpu-grid" id="cpu-container">
+                <div id="cpu-container" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
                     <!-- Dynamic CPU cores -->
                 </div>
             </div>
@@ -491,50 +491,85 @@
                     document.getElementById('val-hits-misses').innerText = `${totalHits} Hits / ${totalMisses} Misses`;
                     setCacheProgress(hitRate);
 
-                    // Update CPU cores
+                    // Update CPU cores per Worker Node
                     const cpuContainer = document.getElementById('cpu-container');
                     cpuContainer.innerHTML = '';
-                    if (data.cpu_cores_usage && data.cpu_cores_usage.length > 0) {
-                        data.cpu_cores_usage.forEach((usage, idx) => {
-                            const coreDiv = document.createElement('div');
-                            coreDiv.className = 'cpu-core';
+                    
+                    if (data.workers && data.workers.length > 0) {
+                        data.workers.forEach(worker => {
+                            const workerCard = document.createElement('div');
+                            workerCard.style.padding = '1rem';
+                            workerCard.style.border = '1px solid var(--border)';
+                            workerCard.style.borderRadius = '0.75rem';
+                            workerCard.style.background = 'rgba(255,255,255,0.01)';
+                            workerCard.style.marginBottom = '0.75rem';
                             
-                            let glowColor = 'rgba(0, 242, 254, 0.05)';
-                            let borderColor = 'var(--border)';
-                            let barColor = 'var(--secondary)';
-                            let textColor = 'var(--text)';
-                            if (usage > 85) {
-                                glowColor = 'rgba(239, 68, 68, 0.15)';
-                                borderColor = 'rgba(239, 68, 68, 0.3)';
-                                barColor = 'var(--red)';
-                                textColor = 'var(--red)';
-                            } else if (usage > 40) {
-                                glowColor = 'rgba(245, 158, 11, 0.1)';
-                                borderColor = 'rgba(245, 158, 11, 0.25)';
-                                barColor = 'var(--orange)';
-                                textColor = 'var(--orange)';
-                            } else if (usage > 5) {
-                                glowColor = 'rgba(0, 242, 254, 0.08)';
-                                borderColor = 'rgba(0, 242, 254, 0.2)';
-                                barColor = 'var(--primary)';
-                                textColor = 'var(--primary)';
-                            }
-                            
-                            coreDiv.style.boxShadow = `inset 0 0 12px ${glowColor}`;
-                            coreDiv.style.borderColor = borderColor;
-                            coreDiv.style.color = textColor;
+                            // OS Icon
+                            const isWin = worker.os.toLowerCase().includes('win');
+                            const osIcon = isWin 
+                                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 6px; color: #00adef;"><path d="M0 3.449L9.75 2.1v9.45H0V3.449zM0 12.45h9.75v9.45L0 20.551v-8.1zM10.95 1.95L24 0v11.55H10.95V1.95zM10.95 12.45H24v11.55l-13.05-1.95v-9.6z"/></svg>'
+                                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 6px; color: #f59e0b;"><path d="M12 .007c-.12 0-.24.01-.36.03C7.4 1.1 5.6 3.9 5.6 6.94c0 1.25.33 2.45.9 3.48-.1-.08-.2-.17-.32-.23-.9-.55-2.07-.46-2.9.23-.9.76-1.12 1.98-.53 2.97.23.4.58.7 1 .88-.33 1.1-.3 2.27.08 3.32-.47.16-.88.47-1.18.88-.63.85-.5 2.05.28 2.76.78.7 2 .65 2.72-.12.3-.3.44-.7.44-1.1v-.15c1.4.67 3 1.05 4.67 1.09.18 0 .36-.02.54-.04 2.87-.27 5.4-2 6.64-4.63.1.2.22.37.38.52.8.77 2.08.77 2.88 0 .8-.77.8-2.04 0-2.8-.27-.27-.6-.44-1-.53.48-1.28.45-2.67-.1-3.92.38-.13.73-.37 1-.7.83-.88.75-2.28-.17-3.07-.9-.78-2.26-.72-3.08.15-.12.13-.2.27-.27.42-.55-1-1.38-1.85-2.38-2.47.63-1 .47-2.33-.4-3.15-.7-.66-1.74-.75-2.54-.26a6.9 6.9 0 0 0-1.63-2.18 2.2 2.2 0 0 0-.23-.2z"/></svg>';
 
-                            coreDiv.innerHTML = `
-                                <div class="cpu-label">CORE ${idx}</div>
-                                <div class="cpu-val">${Math.round(usage)}%</div>
-                                <div class="cpu-bar-bg">
-                                    <div class="cpu-bar-fill" style="width: ${usage}%; background: ${barColor};"></div>
+                            const slotsInfo = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 0.25rem;">Slots: ${worker.slots_used}/${worker.slots_total}</span>`;
+
+                            workerCard.innerHTML = `
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                    <div style="font-weight: 700; color: var(--primary); font-size: 0.95rem; display: flex; align-items: center;">
+                                        ${osIcon}
+                                        <span>${worker.name}</span>
+                                        <span style="font-weight: 400; color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">(${worker.ip})</span>
+                                    </div>
+                                    <div>${slotsInfo}</div>
+                                </div>
+                                <div class="cpu-grid">
+                                    <!-- CPU cores inside -->
                                 </div>
                             `;
-                            cpuContainer.appendChild(coreDiv);
+                            
+                            const coreGrid = workerCard.querySelector('.cpu-grid');
+                            worker.cpu_cores_usage.forEach((usage, idx) => {
+                                const coreDiv = document.createElement('div');
+                                coreDiv.className = 'cpu-core';
+                                
+                                let glowColor = 'rgba(0, 242, 254, 0.05)';
+                                let borderColor = 'var(--border)';
+                                let barColor = 'var(--secondary)';
+                                let textColor = 'var(--text)';
+                                if (usage > 85) {
+                                    glowColor = 'rgba(239, 68, 68, 0.15)';
+                                    borderColor = 'rgba(239, 68, 68, 0.3)';
+                                    barColor = 'var(--red)';
+                                    textColor = 'var(--red)';
+                                } else if (usage > 40) {
+                                    glowColor = 'rgba(245, 158, 11, 0.1)';
+                                    borderColor = 'rgba(245, 158, 11, 0.25)';
+                                    barColor = 'var(--orange)';
+                                    textColor = 'var(--orange)';
+                                } else if (usage > 5) {
+                                    glowColor = 'rgba(0, 242, 254, 0.08)';
+                                    borderColor = 'rgba(0, 242, 254, 0.2)';
+                                    barColor = 'var(--primary)';
+                                    textColor = 'var(--primary)';
+                                }
+                                
+                                coreDiv.style.boxShadow = `inset 0 0 12px ${glowColor}`;
+                                coreDiv.style.borderColor = borderColor;
+                                coreDiv.style.color = textColor;
+
+                                coreDiv.innerHTML = `
+                                    <div class="cpu-label">CORE ${idx}</div>
+                                    <div class="cpu-val">${Math.round(usage)}%</div>
+                                    <div class="cpu-bar-bg">
+                                        <div class="cpu-bar-fill" style="width: ${usage}%; background: ${barColor};"></div>
+                                    </div>
+                                `;
+                                coreGrid.appendChild(coreDiv);
+                            });
+                            
+                            cpuContainer.appendChild(workerCard);
                         });
                     } else {
-                        cpuContainer.innerHTML = '<div style="color: var(--text-muted); font-style: italic; grid-column: 1/-1;">Lade Host CPU Metriken...</div>';
+                        cpuContainer.innerHTML = '<div style="color: var(--text-muted); font-style: italic; text-align: center; padding: 1.5rem 0;">Warte auf aktive Compiler-Worker im Grid...</div>';
                     }
 
                     // Save jobs for local fast timer tick

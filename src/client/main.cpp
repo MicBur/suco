@@ -1,3 +1,5 @@
+#include "socket_util.h"
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -5,24 +7,65 @@
 #include <fstream>
 #include <cstring>
 #include <cstdlib>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <sys/select.h>
-#include <hiredis/hiredis.h>
+#include <chrono>
+
+#ifdef _WIN32
+    #include <process.h>
+#else
+    #include <sys/wait.h>
+    #include <unistd.h>
+#endif
+
 #include "protocol.h"
 #include "hash_util.h"
 
-// Helper to run a command locally and capture stdout
+// Platform-independent process spawn for fallback
+int run_fallback_local(char** argv) {
+#ifdef _WIN32
+    // Windows: Spawn process and wait for it
+    // argv[1] is the compiler, argv + 1 is the arguments list starting with the compiler
+    intptr_t res = _spawnvp(_P_WAIT, argv[1], argv + 1);
+    if (res < 0) {
+        std::cerr << "suco error: Failed to execute local fallback compiler (MSVC/GCC) " << argv[1] << std::endl;
+        return 1;
+    }
+    return static_cast<int>(res);
+#else
+    // Linux: fork & execvp
+    pid_t pid = fork();
+    if (pid == 0) {
+        execvp(argv[1], argv + 1);
+        std::cerr << "suco error: Failed to execute local fallback compiler " << argv[1] << std::endl;
+        exit(1);
+    } else if (pid > 0) {
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        }
+        return 1;
+    }
+    return 1;
+#endif
+}
+
+// Run a command and capture its stdout output
 std::string run_local_capture(const std::string& cmd, int& exit_code) {
     std::string result;
     char buffer[4096];
-    std::string cmd_with_err = cmd + " 2>&1";
-    FILE* pipe = popen(cmd_with_err.c_str(), "r");
+#ifdef _WIN32
+    FILE* pipe = _popen(cmd.c_str(), "r");
+    if (!pipe) {
+        exit_code = -1;
+        return "";
+    }
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        result += buffer;
+    }
+    int status = _pclose(pipe);
+    exit_code = status;
+#else
+    FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {
         exit_code = -1;
         return "";
@@ -32,70 +75,56 @@ std::string run_local_capture(const std::string& cmd, int& exit_code) {
     }
     int status = pclose(pipe);
     exit_code = WEXITSTATUS(status);
+#endif
     return result;
 }
 
-// Fallback to local compilation
-void fallback_local(char** argv) {
-    // Re-execute original command
-    execvp(argv[1], argv + 1);
-    // If execvp fails:
-    std::cerr << "suco error: Failed to execute local fallback compiler " << argv[1] << std::endl;
-    exit(1);
-}
+// Connect to socket with a strict 100ms timeout
+socket_t connect_with_timeout(const std::string& host, uint16_t port, int timeout_ms) {
+    socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET_VAL) return INVALID_SOCKET_VAL;
 
-// Send all bytes to socket
-bool send_all(int sock, const void* data, size_t len) {
-    const char* ptr = static_cast<const char*>(data);
-    while (len > 0) {
-        ssize_t sent = send(sock, ptr, len, 0);
-        if (sent <= 0) return false;
-        ptr += sent;
-        len -= sent;
+    struct hostent* server = gethostbyname(host.c_str());
+    if (!server) {
+        close_socket(sock);
+        return INVALID_SOCKET_VAL;
     }
-    return true;
-}
 
-// Read exact bytes from socket
-bool read_all(int sock, void* data, size_t len) {
-    char* ptr = static_cast<char*>(data);
-    while (len > 0) {
-        ssize_t received = recv(sock, ptr, len, 0);
-        if (received <= 0) return false;
-        ptr += received;
-        len -= received;
+    struct sockaddr_in serv_addr;
+    std::memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
+    serv_addr.sin_port = htons(port);
+
+    // Set non-blocking
+    if (!suco::set_socket_nonblocking(sock, true)) {
+        close_socket(sock);
+        return INVALID_SOCKET_VAL;
     }
-    return true;
-}
 
-// Connect to socket with timeout using select (non-blocking transition)
-int connect_with_timeout(int sock, const struct sockaddr* addr, socklen_t addrlen, int timeout_sec) {
-    int flags = fcntl(sock, F_GETFL, 0);
-    if (flags < 0) return -1;
-    if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
-
-    int res = connect(sock, addr, addrlen);
+    int res = connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     if (res < 0) {
-        if (errno == EINPROGRESS) {
+        int err = get_socket_error();
+        if (is_would_block(err)) {
             fd_set write_fds;
             FD_ZERO(&write_fds);
             FD_SET(sock, &write_fds);
 
             struct timeval tv;
-            tv.tv_sec = timeout_sec;
-            tv.tv_usec = 0;
+            tv.tv_sec = 0;
+            tv.tv_usec = timeout_ms * 1000;
 
-            res = select(sock + 1, nullptr, &write_fds, nullptr, &tv);
+            res = select(static_cast<int>(sock + 1), nullptr, &write_fds, nullptr, &tv);
             if (res > 0) {
-                int err = 0;
-                socklen_t len = sizeof(err);
-                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+                int sock_err = 0;
+                socklen_t len = sizeof(sock_err);
+                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&sock_err), &len) < 0 || sock_err != 0) {
                     res = -1;
                 } else {
-                    res = 0; // Success
+                    res = 0; // Connected!
                 }
             } else {
-                res = -1; // Timeout or select error
+                res = -1; // Timeout or error
             }
         } else {
             res = -1;
@@ -103,27 +132,39 @@ int connect_with_timeout(int sock, const struct sockaddr* addr, socklen_t addrle
     }
 
     // Restore blocking mode
-    fcntl(sock, F_SETFL, flags);
-    return res;
+    suco::set_socket_nonblocking(sock, false);
+
+    if (res < 0) {
+        close_socket(sock);
+        return INVALID_SOCKET_VAL;
+    }
+
+    return sock;
 }
 
 int main(int argc, char** argv) {
+    suco::SocketInit sock_init; // Automatically starts Winsock under Windows
+
     if (argc < 2) {
         std::cerr << "Usage: suco <compiler> [flags] -c <source> -o <output>" << std::endl;
         std::cerr << "       suco --monitor  (Opens the compilation grid dashboard in your browser)" << std::endl;
         return 1;
     }
 
+    // Parse CLI helpers
     if (argc == 2 && (std::string(argv[1]) == "--monitor" || std::string(argv[1]) == "--dashboard")) {
-        // Get helper host
-        std::string helper_host = "127.0.0.1";
-        if (const char* env_host = std::getenv("SUCO_HELPER_HOST")) helper_host = env_host;
-        
-        std::string url = "http://" + helper_host + ":9001";
+        std::string coordinator_host = "127.0.0.1";
+        if (const char* env_host = std::getenv("SUCO_COORDINATOR_HOST")) {
+            coordinator_host = env_host;
+        }
+        std::string url = "http://" + coordinator_host + ":" + std::to_string(suco::DEFAULT_WEB_PORT);
         std::cout << "Opening SUCO Grid Monitor Dashboard at " << url << " ..." << std::endl;
-        
+
         std::string cmd;
-        // Check if we are in WSL (Windows Subsystem for Linux)
+#ifdef _WIN32
+        cmd = "start " + url;
+#else
+        // Check for WSL
         std::ifstream version_file("/proc/version");
         std::string version_str;
         bool is_wsl = false;
@@ -132,66 +173,93 @@ int main(int argc, char** argv) {
                 is_wsl = true;
             }
         }
-
         if (is_wsl) {
-            // Use cmd.exe to launch the browser on the Windows host
             cmd = "cmd.exe /C start " + url + " 2>/dev/null";
         } else {
-            #if defined(_WIN32)
-                cmd = "start " + url;
-            #elif defined(__APPLE__)
-                cmd = "open " + url;
-            #else
-                cmd = "xdg-open " + url + " 2>/dev/null || open " + url + " 2>/dev/null";
-            #endif
+            cmd = "xdg-open " + url + " 2>/dev/null || open " + url + " 2>/dev/null";
         }
-        
-        int res = std::system(cmd.c_str());
-        (void)res;
+#endif
+        int r = std::system(cmd.c_str());
+        (void)r;
         return 0;
     }
 
     std::string compiler = argv[1];
+    std::string compiler_lower = compiler;
+    for (auto& c : compiler_lower) c = std::tolower(c);
+
+    bool is_msvc = (compiler_lower.rfind("cl") != std::string::npos || compiler_lower.rfind("cl.exe") != std::string::npos);
+
     bool has_c = false;
     std::string output_file;
     std::string source_file;
     std::vector<std::string> other_flags;
 
-    // Parse arguments
+    // Parse arguments based on compiler type (MSVC cl.exe vs GCC g++)
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-c") {
-            has_c = true;
-        } else if (arg == "-o" && i + 1 < argc) {
-            output_file = argv[++i];
-        } else if (arg.rfind(".cpp") != std::string::npos || 
-                   arg.rfind(".cc") != std::string::npos || 
-                   arg.rfind(".cxx") != std::string::npos || 
-                   arg.rfind(".c") != std::string::npos) {
-            source_file = arg;
+        if (is_msvc) {
+            // MSVC flags
+            if (arg == "/c" || arg == "-c") {
+                has_c = true;
+            } else if (arg.rfind("/Fo", 0) == 0) {
+                output_file = arg.substr(3); // e.g. /Fofile.obj
+                if (output_file.empty() && i + 1 < argc) {
+                    output_file = argv[++i]; // e.g. /Fo file.obj
+                }
+            } else if (arg.rfind("-Fo", 0) == 0) {
+                output_file = arg.substr(3);
+                if (output_file.empty() && i + 1 < argc) {
+                    output_file = argv[++i];
+                }
+            } else if (arg.rfind(".cpp") != std::string::npos || 
+                       arg.rfind(".cc") != std::string::npos || 
+                       arg.rfind(".cxx") != std::string::npos || 
+                       arg.rfind(".c") != std::string::npos) {
+                source_file = arg;
+            } else {
+                other_flags.push_back(arg);
+            }
         } else {
-            other_flags.push_back(arg);
+            // GCC/Clang flags
+            if (arg == "-c") {
+                has_c = true;
+            } else if (arg == "-o" && i + 1 < argc) {
+                output_file = argv[++i];
+            } else if (arg.rfind(".cpp") != std::string::npos || 
+                       arg.rfind(".cc") != std::string::npos || 
+                       arg.rfind(".cxx") != std::string::npos || 
+                       arg.rfind(".c") != std::string::npos) {
+                source_file = arg;
+            } else {
+                other_flags.push_back(arg);
+            }
         }
     }
 
-    // Fallback if not a standard compilation step (-c is missing or no source/output)
+    // Fallback to local compile if not a standard compilation step
     if (!has_c || output_file.empty() || source_file.empty()) {
-        fallback_local(argv);
+        return run_fallback_local(argv);
     }
 
-    // Determine target language for preprocessing and compiling
-    std::string lang = "c++";
-    if (source_file.rfind(".c") != std::string::npos && source_file.rfind(".cpp") == std::string::npos) {
-        lang = "c";
-    }
-
-    // Build the preprocessor command
+    // Preprocessing command
     std::stringstream pp_cmd;
-    pp_cmd << compiler << " -E ";
-    for (const auto& flag : other_flags) {
-        pp_cmd << flag << " ";
+    if (is_msvc) {
+        pp_cmd << "\"" << compiler << "\" /E /nologo ";
+        for (const auto& flag : other_flags) {
+            // Skip MSVC options not suitable for preprocessor
+            if (flag != "/nologo" && flag.rfind("/F", 0) != 0) {
+                pp_cmd << flag << " ";
+            }
+        }
+        pp_cmd << source_file;
+    } else {
+        pp_cmd << "\"" << compiler << "\" -E ";
+        for (const auto& flag : other_flags) {
+            pp_cmd << flag << " ";
+        }
+        pp_cmd << source_file;
     }
-    pp_cmd << source_file;
 
     // Run local preprocessor
     int pp_exit = 0;
@@ -201,222 +269,167 @@ int main(int argc, char** argv) {
         return pp_exit;
     }
 
-    // Gather compiler flags for remote compile (strip includes/macros for hashing/helper clean command)
+    // Clean compile flags for hashing
     std::stringstream compile_flags;
     for (const auto& flag : other_flags) {
+        // Only keep optimization, standard, and warning flags for caching signature
         if (flag.rfind("-O", 0) == 0 || flag.rfind("-W", 0) == 0 || 
-            flag.rfind("-std=", 0) == 0 || flag.rfind("-m", 0) == 0 || 
-            flag.rfind("-f", 0) == 0) {
+            flag.rfind("-std=", 0) == 0 || flag.rfind("/O", 0) == 0 || 
+            flag.rfind("/W", 0) == 0 || flag.rfind("/std:", 0) == 0) {
             compile_flags << flag << " ";
         }
     }
     std::string flags_str = compile_flags.str();
 
-    // Calculate hash
+    // Calculate SHA-256 hash signature of code + flags
     std::string source_hash = suco::calculate_sha256(preprocessed_source, flags_str);
 
-    // Redis configuration (defaults to localhost, override via Env)
-    std::string redis_read_host = "127.0.0.1";
-    int redis_read_port = 6379;
-    if (const char* env_host = std::getenv("SUCO_REDIS_REPLICA_HOST")) redis_read_host = env_host;
-    if (const char* env_port = std::getenv("SUCO_REDIS_REPLICA_PORT")) redis_read_port = std::stoi(env_port);
-
-    std::string redis_write_host = redis_read_host;
-    int redis_write_port = redis_read_port;
-    if (const char* env_host = std::getenv("SUCO_REDIS_MASTER_HOST")) redis_write_host = env_host;
-    if (const char* env_port = std::getenv("SUCO_REDIS_MASTER_PORT")) redis_write_port = std::stoi(env_port);
-
-    // Check Redis replica for Cache Hit with timeout
-    struct timeval redis_timeout = { 0, 500000 }; // 500ms
-    redisContext* redis_read = redisConnectWithTimeout(redis_read_host.c_str(), redis_read_port, redis_timeout);
-    bool cache_hit = false;
-    if (redis_read && !redis_read->err) {
-        std::string obj_key = "suco:obj:" + source_hash;
-        std::string log_key = "suco:log:" + source_hash;
-
-        redisReply* reply_obj = (redisReply*)redisCommand(redis_read, "GET %s", obj_key.c_str());
-        if (reply_obj && reply_obj->type == REDIS_REPLY_STRING) {
-            // Write binary file
-            std::ofstream out(output_file, std::ios::binary);
-            if (out.is_open()) {
-                out.write(reply_obj->str, reply_obj->len);
-                out.close();
-                cache_hit = true;
-
-                // Increment cache hits counter in Redis
-                redisReply* r_hit = (redisReply*)redisCommand(redis_read, "INCR suco:stats:cache_hits");
-                if (r_hit) freeReplyObject(r_hit);
-
-                // Also display compiler warnings if there were any
-                redisReply* reply_log = (redisReply*)redisCommand(redis_read, "GET %s", log_key.c_str());
-                if (reply_log && reply_log->type == REDIS_REPLY_STRING && reply_log->len > 0) {
-                    std::cerr << reply_log->str;
-                }
-                if (reply_log) freeReplyObject(reply_log);
-            }
-        }
-        if (reply_obj) freeReplyObject(reply_obj);
-        redisFree(redis_read);
+    // Get coordinator host
+    std::string coordinator_host = "127.0.0.1";
+    if (const char* env_host = std::getenv("SUCO_COORDINATOR_HOST")) {
+        coordinator_host = env_host;
     }
 
-    if (cache_hit) {
-        return 0; // Cache-Hit success!
+    // Connect to Coordinator with strict 100ms connection timeout (resilient fallback)
+    socket_t sock = connect_with_timeout(coordinator_host, suco::DEFAULT_PORT, 100);
+    if (sock == INVALID_SOCKET_VAL) {
+        // Fallback silently to local compilation
+        return run_fallback_local(argv);
     }
 
-    // Connect to Remote Helper Service
-    std::string helper_host = "127.0.0.1";
-    int helper_port = suco::DEFAULT_PORT;
-    if (const char* env_host = std::getenv("SUCO_HELPER_HOST")) helper_host = env_host;
-    if (const char* env_port = std::getenv("SUCO_HELPER_PORT")) helper_port = std::stoi(env_port);
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        std::cerr << "suco warning: Failed to create socket, falling back to local compile." << std::endl;
-        fallback_local(argv);
-    }
-
-    struct hostent* server = gethostbyname(helper_host.c_str());
-    if (!server) {
-        std::cerr << "suco warning: Helper host not found, falling back to local compile." << std::endl;
-        close(sock);
-        fallback_local(argv);
-    }
-
-    struct sockaddr_in serv_addr;
-    std::memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
-    serv_addr.sin_port = htons(helper_port);
-
-    // Set connection timeout (e.g. 2 seconds)
-    if (connect_with_timeout(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr), 2) < 0) {
-        std::cerr << "suco warning: Connection to helper " << helper_host << ":" << helper_port 
-                  << " failed. Falling back to local compile." << std::endl;
-        close(sock);
-        fallback_local(argv);
-    }
-
-    // Set receive/send timeout for protocol transmission
-    struct timeval tv;
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
-
-    // Construct command to send to remote node
+    // Construct compiler command to send to coordinator
     std::stringstream remote_cmd;
-    remote_cmd << compiler << " " << flags_str << " -x " << lang << " -c - -o output.o";
+    remote_cmd << compiler << " " << flags_str;
     std::string remote_cmd_str = remote_cmd.str();
 
-    // Serialise Request:
-    // [4 bytes: cmd_len] + [cmd] + [4 bytes: src_len] + [src] + [4 bytes: file_len] + [filename]
-    uint32_t cmd_len = htonl(remote_cmd_str.size());
-    uint32_t src_len = htonl(preprocessed_source.size());
-    uint32_t file_len = htonl(source_file.size());
-
-    if (!send_all(sock, &cmd_len, 4) ||
-        !send_all(sock, remote_cmd_str.c_str(), remote_cmd_str.size()) ||
-        !send_all(sock, &src_len, 4) ||
-        !send_all(sock, preprocessed_source.c_str(), preprocessed_source.size()) ||
-        !send_all(sock, &file_len, 4) ||
-        !send_all(sock, source_file.c_str(), source_file.size())) {
-        std::cerr << "suco error: Sending data to helper failed. Falling back to local compile." << std::endl;
-        close(sock);
-        fallback_local(argv);
+    // 1. Send CACHE_QUERY packet
+    // Format: [4 bytes: type = CACHE_QUERY] + [4 bytes: hash_len = 64] + [hash_string]
+    uint32_t type = htonl(suco::PACKET_CACHE_QUERY);
+    uint32_t hash_len = htonl(source_hash.size());
+    if (!suco::send_all(sock, &type, 4) ||
+        !suco::send_all(sock, &hash_len, 4) ||
+        !suco::send_all(sock, source_hash.c_str(), source_hash.size())) {
+        close_socket(sock);
+        return run_fallback_local(argv);
     }
 
-    // Disable send/receive timeout for compilation since it can take longer
-    tv.tv_sec = 60; // 60 seconds compile timeout limit
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-
-    // Receive Response:
-    // [4 bytes: exit_code] + [4 bytes: log_len] + [log] + [4 bytes: bin_len] + [bin]
-    int32_t exit_code = -1;
-    if (!read_all(sock, &exit_code, 4)) {
-        std::cerr << "suco error: Failed to receive exit code. Falling back to local compile." << std::endl;
-        close(sock);
-        fallback_local(argv);
+    // 2. Read Response Type
+    uint32_t resp_type_net = 0;
+    if (!suco::read_all(sock, &resp_type_net, 4)) {
+        close_socket(sock);
+        return run_fallback_local(argv);
     }
-    exit_code = ntohl(exit_code);
+    uint32_t resp_type = ntohl(resp_type_net);
 
-    uint32_t log_len = 0;
-    if (!read_all(sock, &log_len, 4)) {
-        std::cerr << "suco error: Failed to receive compiler output size. Falling back." << std::endl;
-        close(sock);
-        fallback_local(argv);
-    }
-    log_len = ntohl(log_len);
-
-    std::string compiler_output;
-    if (log_len > 0) {
-        std::vector<char> log_buf(log_len);
-        if (!read_all(sock, log_buf.data(), log_len)) {
-            std::cerr << "suco error: Failed to read compiler output. Falling back." << std::endl;
-            close(sock);
-            fallback_local(argv);
+    if (resp_type == suco::PACKET_CACHE_HIT) {
+        // Cache Hit! Read: [4 bytes: log_len] + [log] + [4 bytes: bin_len] + [bin_data]
+        uint32_t log_len = 0;
+        if (!suco::read_all(sock, &log_len, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
         }
-        compiler_output.assign(log_buf.data(), log_len);
-    }
-
-    uint32_t bin_len = 0;
-    if (!read_all(sock, &bin_len, 4)) {
-        std::cerr << "suco error: Failed to receive binary object size. Falling back." << std::endl;
-        close(sock);
-        fallback_local(argv);
-    }
-    bin_len = ntohl(bin_len);
-
-    std::vector<uint8_t> bin_data;
-    if (bin_len > 0) {
-        bin_data.resize(bin_len);
-        if (!read_all(sock, bin_data.data(), bin_len)) {
-            std::cerr << "suco error: Failed to read binary object data. Falling back." << std::endl;
-            close(sock);
-            fallback_local(argv);
+        log_len = ntohl(log_len);
+        if (log_len > 0) {
+            std::vector<char> log_buf(log_len);
+            if (suco::read_all(sock, log_buf.data(), log_len)) {
+                std::cerr.write(log_buf.data(), log_len);
+            }
         }
-    }
-    close(sock);
 
-    // Print compiler output
-    if (!compiler_output.empty()) {
-        std::cerr << compiler_output;
-    }
-
-    if (exit_code == 0 && bin_len > 0) {
-        // Save to output file
-        std::ofstream out(output_file, std::ios::binary);
-        if (!out.is_open()) {
-            std::cerr << "suco error: Failed to write output file: " << output_file << std::endl;
-            return 1;
+        uint32_t bin_len = 0;
+        if (!suco::read_all(sock, &bin_len, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
         }
-        out.write(reinterpret_cast<const char*>(bin_data.data()), bin_len);
-        out.close();
-
-        // Save to Redis Master with timeout
-        struct timeval redis_write_timeout = { 1, 0 }; // 1s
-        redisContext* redis_write = redisConnectWithTimeout(redis_write_host.c_str(), redis_write_port, redis_write_timeout);
-        if (redis_write && !redis_write->err) {
-            std::string obj_key = "suco:obj:" + source_hash;
-            std::string log_key = "suco:log:" + source_hash;
-
-            // Write object binary
-            redisReply* r1 = (redisReply*)redisCommand(redis_write, "SET %s %b", obj_key.c_str(), bin_data.data(), (size_t)bin_len);
-            // Write log
-            redisReply* r2 = (redisReply*)redisCommand(redis_write, "SET %s %s", log_key.c_str(), compiler_output.c_str());
-            
-            // Set TTL of 7 days (604800 seconds)
-            redisCommand(redis_write, "EXPIRE %s 604800", obj_key.c_str());
-            redisCommand(redis_write, "EXPIRE %s 604800", log_key.c_str());
-
-            // Increment cache misses counter in Redis
-            redisReply* r_miss = (redisReply*)redisCommand(redis_write, "INCR suco:stats:cache_misses");
-            if (r_miss) freeReplyObject(r_miss);
-
-            if (r1) freeReplyObject(r1);
-            if (r2) freeReplyObject(r2);
-            redisFree(redis_write);
+        bin_len = ntohl(bin_len);
+        if (bin_len > 0) {
+            std::vector<uint8_t> bin_data(bin_len);
+            if (suco::read_all(sock, bin_data.data(), bin_len)) {
+                std::ofstream out(output_file, std::ios::binary);
+                if (out.is_open()) {
+                    out.write(reinterpret_cast<const char*>(bin_data.data()), bin_len);
+                    out.close();
+                    close_socket(sock);
+                    return 0; // Success!
+                }
+            }
         }
+        close_socket(sock);
+        return run_fallback_local(argv);
     }
 
-    return exit_code;
+    // Cache Miss! Coordinator expects: [COMPILE_REQ] + [cmd_len] + [cmd] + [file_len] + [filename] + [src_len] + [source]
+    if (resp_type == suco::PACKET_CACHE_MISS) {
+        uint32_t req_type = htonl(suco::PACKET_COMPILE_REQ);
+        uint32_t cmd_len = htonl(remote_cmd_str.size());
+        uint32_t file_len = htonl(source_file.size());
+        uint32_t src_len = htonl(preprocessed_source.size());
+
+        if (!suco::send_all(sock, &req_type, 4) ||
+            !suco::send_all(sock, &cmd_len, 4) ||
+            !suco::send_all(sock, remote_cmd_str.c_str(), remote_cmd_str.size()) ||
+            !suco::send_all(sock, &file_len, 4) ||
+            !suco::send_all(sock, source_file.c_str(), source_file.size()) ||
+            !suco::send_all(sock, &src_len, 4) ||
+            !suco::send_all(sock, preprocessed_source.c_str(), preprocessed_source.size())) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+
+        // Wait for Compilation Response: [COMPILE_RESP] + [exit_code] + [log_len] + [log] + [bin_len] + [bin]
+        uint32_t compile_resp_type_net = 0;
+        if (!suco::read_all(sock, &compile_resp_type_net, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+        uint32_t compile_resp_type = ntohl(compile_resp_type_net);
+        if (compile_resp_type != suco::PACKET_COMPILE_RESP) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+
+        int32_t exit_code_net = 0;
+        if (!suco::read_all(sock, &exit_code_net, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+        int32_t exit_code = ntohl(exit_code_net);
+
+        uint32_t log_len = 0;
+        if (!suco::read_all(sock, &log_len, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+        log_len = ntohl(log_len);
+        if (log_len > 0) {
+            std::vector<char> log_buf(log_len);
+            if (suco::read_all(sock, log_buf.data(), log_len)) {
+                std::cerr.write(log_buf.data(), log_len);
+            }
+        }
+
+        uint32_t bin_len = 0;
+        if (!suco::read_all(sock, &bin_len, 4)) {
+            close_socket(sock);
+            return run_fallback_local(argv);
+        }
+        bin_len = ntohl(bin_len);
+        if (bin_len > 0) {
+            std::vector<uint8_t> bin_data(bin_len);
+            if (suco::read_all(sock, bin_data.data(), bin_len)) {
+                if (exit_code == 0) {
+                    std::ofstream out(output_file, std::ios::binary);
+                    if (out.is_open()) {
+                        out.write(reinterpret_cast<const char*>(bin_data.data()), bin_len);
+                        out.close();
+                    }
+                }
+            }
+        }
+        close_socket(sock);
+        return exit_code;
+    }
+
+    close_socket(sock);
+    return run_fallback_local(argv);
 }

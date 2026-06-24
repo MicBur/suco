@@ -1,0 +1,224 @@
+#pragma once
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <mutex>
+#include <filesystem>
+#include <algorithm>
+#include <fstream>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#ifdef _WIN32
+    #include <direct.h>
+    #define getcwd _getcwd
+#else
+    #include <unistd.h>
+#endif
+
+namespace suco {
+
+class LruCache {
+private:
+    std::string cache_dir_;
+    uint64_t max_size_bytes_;
+    std::mutex mutex_;
+
+    // Helper to get platform-specific last access time
+    time_t get_last_access_time(const std::string& path) {
+        struct stat result;
+        if (stat(path.c_str(), &result) == 0) {
+            return result.st_atime; // Last access time
+        }
+        return 0;
+    }
+
+    // Helper to expand environment variables or home directory
+    std::string expand_path(const std::string& path) {
+#ifdef _WIN32
+        // Under Windows, expand %LOCALAPPDATA%
+        if (path.find("%LOCALAPPDATA%") != std::string::npos) {
+            char* local_app_data = nullptr;
+            size_t len = 0;
+            if (_dupenv_s(&local_app_data, &len, "LOCALAPPDATA") == 0 && local_app_data != nullptr) {
+                std::string expanded(local_app_data);
+                free(local_app_data);
+                std::string rest = path.substr(std::string("%LOCALAPPDATA%").size());
+                return expanded + rest;
+            }
+            // Fallback to current directory if environment variable is not set
+            return "./suco_cache";
+        }
+#else
+        // Under Linux, expand ~
+        if (!path.empty() && path[0] == '~') {
+            const char* home = std::getenv("HOME");
+            if (home) {
+                return std::string(home) + path.substr(1);
+            }
+            return "./suco_cache";
+        }
+#endif
+        return path;
+    }
+
+public:
+    LruCache(const std::string& raw_cache_dir, uint64_t max_size_bytes)
+        : max_size_bytes_(max_size_bytes) {
+        cache_dir_ = expand_path(raw_cache_dir);
+        std::filesystem::create_directories(cache_dir_);
+        std::cout << "suco-coordinator: Cache initialized at " << cache_dir_ 
+                  << " (Limit: " << (max_size_bytes_ / (1024 * 1024)) << " MB)" << std::endl;
+    }
+
+    // Retrieve file paths for a given SHA-256 hash (two-level directory structure)
+    // Structure: cache_dir/ab/cdef1234...o (and .log for warnings)
+    std::pair<std::string, std::string> get_cache_paths(const std::string& hash) {
+        if (hash.size() < 2) return {"", ""};
+        std::string dir = hash.substr(0, 2);
+        std::string rest = hash.substr(2);
+        
+        std::filesystem::path subdir = std::filesystem::path(cache_dir_) / dir;
+        std::string obj_path = (subdir / (rest + ".o")).string();
+        std::string log_path = (subdir / (rest + ".log")).string();
+        return {obj_path, log_path};
+    }
+
+    // Check if hash is cached
+    bool get(const std::string& hash, std::vector<uint8_t>& obj_data, std::string& log_data) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto paths = get_cache_paths(hash);
+        if (paths.first.empty()) return false;
+
+        // Check if object file exists
+        if (!std::filesystem::exists(paths.first)) {
+            return false;
+        }
+
+        // Read object binary data
+        std::ifstream obj_file(paths.first, std::ios::binary | std::ios::ate);
+        if (!obj_file.is_open()) return false;
+        std::streamsize size = obj_file.tellg();
+        obj_file.seekg(0, std::ios::beg);
+        obj_data.resize(size);
+        if (!obj_file.read(reinterpret_cast<char*>(obj_data.data()), size)) {
+            return false;
+        }
+        obj_file.close();
+
+        // Read log warning data (optional)
+        if (std::filesystem::exists(paths.second)) {
+            std::ifstream log_file(paths.second);
+            if (log_file.is_open()) {
+                std::stringstream ss;
+                ss << log_file.rdbuf();
+                log_data = ss.str();
+                log_file.close();
+            }
+        }
+
+        // Update last access time (touch the file)
+        // Under C++17 filesystem we can use last_write_time, but to avoid compiler warning issues 
+        // with clock types, we can simply touch it by updating last_write_time to now.
+        try {
+            std::filesystem::last_write_time(paths.first, std::filesystem::file_time_type::clock::now());
+        } catch (...) {}
+
+        return true;
+    }
+
+    // Store compiled results to cache
+    void put(const std::string& hash, const std::vector<uint8_t>& obj_data, const std::string& log_data) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto paths = get_cache_paths(hash);
+        if (paths.first.empty()) return;
+
+        // Ensure subdirectories exist (e.g. cache_dir/ab/)
+        std::filesystem::create_directories(std::filesystem::path(paths.first).parent_path());
+
+        // Write object binary
+        std::ofstream obj_file(paths.first, std::ios::binary);
+        if (obj_file.is_open()) {
+            obj_file.write(reinterpret_cast<const char*>(obj_data.data()), obj_data.size());
+            obj_file.close();
+        }
+
+        // Write log warning data if present
+        if (!log_data.empty()) {
+            std::ofstream log_file(paths.second);
+            if (log_file.is_open()) {
+                log_file << log_data;
+                log_file.close();
+            }
+        }
+
+        // Trigger LRU Cleanup in background if threshold is crossed
+        clean_up_lru();
+    }
+
+    // Scan directory and perform LRU eviction if size limit is exceeded
+    void clean_up_lru() {
+        uint64_t current_size = 0;
+        struct CacheFile {
+            std::string path;
+            uint64_t size;
+            time_t last_access;
+        };
+        std::vector<CacheFile> files;
+
+        // Recursively find all files in the cache directory
+        try {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(cache_dir_)) {
+                if (entry.is_regular_file()) {
+                    std::string p = entry.path().string();
+                    uint64_t sz = entry.file_size();
+                    current_size += sz;
+                    files.push_back({p, sz, get_last_access_time(p)});
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "suco-coordinator cache error: Failed to scan directory: " << e.what() << std::endl;
+            return;
+        }
+
+        if (current_size <= max_size_bytes_) {
+            return; // Cache limit is not exceeded!
+        }
+
+        std::cout << "suco-coordinator: Cache size exceeded (" << (current_size / (1024 * 1024)) 
+                  << " MB / " << (max_size_bytes_ / (1024 * 1024)) << " MB). Evicting..." << std::endl;
+
+        // Sort files by last access time (oldest first)
+        std::sort(files.begin(), files.end(), [](const CacheFile& a, const CacheFile& b) {
+            return a.last_access < b.last_access;
+        });
+
+        // Delete oldest files until we are down to 80% of max size
+        uint64_t target_size = static_cast<uint64_t>(max_size_bytes_ * 0.8);
+        for (const auto& file : files) {
+            if (current_size <= target_size) break;
+            
+            if (std::filesystem::remove(file.path)) {
+                current_size -= file.size;
+                // Try to remove corresponding log or obj file if orphaned
+                std::string sibling;
+                if (file.path.rfind(".o") != std::string::npos) {
+                    sibling = file.path.substr(0, file.path.size() - 2) + ".log";
+                } else if (file.path.rfind(".log") != std::string::npos) {
+                    sibling = file.path.substr(0, file.path.size() - 4) + ".o";
+                }
+                if (!sibling.empty() && std::filesystem::exists(sibling)) {
+                    uint64_t sib_size = std::filesystem::file_size(sibling);
+                    if (std::filesystem::remove(sibling)) {
+                        current_size -= sib_size;
+                    }
+                }
+            }
+        }
+        std::cout << "suco-coordinator: Cache eviction complete. New size: " 
+                  << (current_size / (1024 * 1024)) << " MB" << std::endl;
+    }
+};
+
+} // namespace suco

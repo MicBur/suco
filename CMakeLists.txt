@@ -7,24 +7,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find OpenSSL for SHA-256 hashing
 find_package(OpenSSL REQUIRED)
 
-# Find hiredis for Redis client support
-find_path(HIREDIS_INCLUDE_DIR hiredis/hiredis.h)
-find_library(HIREDIS_LIBRARY hiredis)
-
-if(NOT HIREDIS_INCLUDE_DIR OR NOT HIREDIS_LIBRARY)
-    message(FATAL_ERROR "hiredis library not found! Install it via 'sudo apt install libhiredis-dev'")
-endif()
-
 include_directories(
     src/common
     ${OPENSSL_INCLUDE_DIR}
-    ${HIREDIS_INCLUDE_DIR}
 )
 
 # Common sources
 set(COMMON_SOURCES
     src/common/hash_util.cpp
 )
+
+# Define platform-specific socket library
+set(SOCKET_LIBS "")
+if(WIN32)
+    set(SOCKET_LIBS "ws2_32")
+endif()
 
 # Client: suco (Compiler wrapper)
 add_executable(suco
@@ -33,17 +30,25 @@ add_executable(suco
 )
 target_link_libraries(suco
     OpenSSL::Crypto
-    ${HIREDIS_LIBRARY}
-    pthread
+    ${SOCKET_LIBS}
 )
 
-# Helper: suco-helper (Daemon)
-add_executable(suco-helper
-    src/helper/main.cpp
+# Coordinator: suco-coordinator
+add_executable(suco-coordinator
+    src/coordinator/main.cpp
     ${COMMON_SOURCES}
 )
-target_link_libraries(suco-helper
+target_link_libraries(suco-coordinator
     OpenSSL::Crypto
-    ${HIREDIS_LIBRARY}
-    pthread
+    ${SOCKET_LIBS}
+)
+
+# Worker: suco-worker
+add_executable(suco-worker
+    src/worker/main.cpp
+    ${COMMON_SOURCES}
+)
+target_link_libraries(suco-worker
+    OpenSSL::Crypto
+    ${SOCKET_LIBS}
 )

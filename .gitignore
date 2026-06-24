@@ -1,8 +1,10 @@
 # Ignore build directories
 build/
+build_linux/
 
 # Ignore object files and intermediate preprocessor files
 *.o
+*.obj
 *.i
 *.ii
 
