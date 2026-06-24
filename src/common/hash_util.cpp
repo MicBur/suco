@@ -8,8 +8,13 @@
 namespace suco {
 
 std::string normalize_preprocessed_source(const std::string& input) {
+    // Guard: leerer Input → leerer Output
+    if (input.empty()) {
+        return "";
+    }
+
     std::string output;
-    output.reserve(input.size()); // Pre-allocate buffer
+    output.reserve(input.size());
 
     const char* data = input.data();
     size_t size = input.size();
@@ -22,9 +27,14 @@ std::string normalize_preprocessed_source(const std::string& input) {
         size_t len = end - start;
         const char* line_ptr = data + start;
 
-        // Skip leading whitespace / carriage returns
+        // Strip trailing \r (Windows CRLF → LF normalization)
+        while (len > 0 && line_ptr[len - 1] == '\r') {
+            len--;
+        }
+
+        // Skip leading whitespace
         size_t first_non_ws = 0;
-        while (first_non_ws < len && (line_ptr[first_non_ws] == ' ' || line_ptr[first_non_ws] == '\t' || line_ptr[first_non_ws] == '\r')) {
+        while (first_non_ws < len && (line_ptr[first_non_ws] == ' ' || line_ptr[first_non_ws] == '\t')) {
             first_non_ws++;
         }
 
@@ -45,18 +55,30 @@ std::string normalize_preprocessed_source(const std::string& input) {
                 // MSVC path markers: #line ...
                 if (len - idx >= 4 && std::strncmp(line_ptr + idx, "line", 4) == 0) {
                     start = end + 1;
-                    continue; // Skip line
+                    continue;
                 }
 
                 // GCC & MSVC Fallback markers: # <line_number> ...
                 if (std::isdigit(static_cast<unsigned char>(line_ptr[idx]))) {
                     start = end + 1;
-                    continue; // Skip line
+                    continue;
+                }
+
+                // #pragma once → skip (Header-only edge case, irrelevant für Objekt-Output)
+                if (len - idx >= 11 && std::strncmp(line_ptr + idx, "pragma", 6) == 0) {
+                    size_t prag_idx = idx + 6;
+                    while (prag_idx < len && (line_ptr[prag_idx] == ' ' || line_ptr[prag_idx] == '\t')) {
+                        prag_idx++;
+                    }
+                    if (prag_idx + 4 <= len && std::strncmp(line_ptr + prag_idx, "once", 4) == 0) {
+                        start = end + 1;
+                        continue;
+                    }
                 }
             }
         }
 
-        // Write non-path, non-empty code lines
+        // Write non-path, non-empty code lines (without trailing \r)
         output.append(line_ptr, len);
         output += '\n';
 
@@ -118,11 +140,15 @@ std::string calculate_sha256(
 
     EVP_MD_CTX_free(mdctx);
 
-    std::stringstream ss;
+    // Fast hex encoding without stringstream overhead
+    static const char hex_chars[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(hash_len * 2);
     for (unsigned int i = 0; i < hash_len; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+        result += hex_chars[(hash[i] >> 4) & 0x0F];
+        result += hex_chars[hash[i] & 0x0F];
     }
-    return ss.str();
+    return result;
 }
 
 } // namespace suco

@@ -144,6 +144,28 @@ socket_t connect_with_timeout(const std::string& host, uint16_t port, int timeou
     return sock;
 }
 
+// Normalize multi-line output (e.g. MSVC /Bv) into a single line for stable hashing
+std::string normalize_version_output(const std::string& input) {
+    std::string result;
+    result.reserve(input.size());
+    bool last_was_space = false;
+    for (char c : input) {
+        if (c == '\n' || c == '\r' || c == '\t') {
+            if (!last_was_space && !result.empty()) {
+                result += ' ';
+                last_was_space = true;
+            }
+        } else {
+            result += c;
+            last_was_space = (c == ' ');
+        }
+    }
+    while (!result.empty() && result.back() == ' ') {
+        result.pop_back();
+    }
+    return result;
+}
+
 void query_compiler_metadata(const std::string& compiler, bool is_msvc, std::string& version, std::string& arch) {
     static std::string cached_version;
     static std::string cached_arch;
@@ -156,7 +178,8 @@ void query_compiler_metadata(const std::string& compiler, bool is_msvc, std::str
             int exit_code = 0;
             std::string out = run_local_capture(cmd, exit_code);
             if (exit_code == 0 && !out.empty()) {
-                cached_version = out;
+                // Normalize multi-line /Bv output into single stable line
+                cached_version = normalize_version_output(out);
                 // Parse target architecture from output
                 if (out.find("ARM64") != std::string::npos || out.find("arm64") != std::string::npos) {
                     cached_arch = "arm64";
@@ -298,6 +321,15 @@ int main(int argc, char** argv) {
         return run_fallback_local(argv);
     }
 
+    // PCH flags: Too complex for distributed cache in Phase 1 → fallback
+    for (const auto& flag : other_flags) {
+        if (flag.rfind("/Yu", 0) == 0 || flag.rfind("/Yc", 0) == 0 ||
+            flag.rfind("/Fp", 0) == 0 || flag == "-include-pch" ||
+            flag.rfind("-fpch-preprocess", 0) == 0) {
+            return run_fallback_local(argv);
+        }
+    }
+
     // Preprocessing command
     std::stringstream pp_cmd;
     if (is_msvc) {
@@ -412,15 +444,11 @@ int main(int argc, char** argv) {
         sorted_include_paths_str += sorted_include_paths[i];
     }
 
+    // Flags mit 0x1F (Unit Separator) trennen — konsistent mit Defines/Includes
     std::string flags_str;
     for (size_t i = 0; i < clean_flags.size(); ++i) {
-        if (i > 0) flags_str += ' ';
+        if (i > 0) flags_str += '\x1F';
         flags_str += clean_flags[i];
-    }
-    // Wenn ein Language Standard existiert, fügen wir ihn zu den Remote-Flags hinzu
-    if (!lang_standard.empty()) {
-        if (!flags_str.empty()) flags_str += ' ';
-        flags_str += lang_standard;
     }
 
     // Abfrage der Compiler-Metadaten
@@ -430,6 +458,12 @@ int main(int argc, char** argv) {
 
     // Normalisiere die präprozessierte Quelldatei
     std::string normalized_source = suco::normalize_preprocessed_source(preprocessed_source);
+
+    // Guard: Leere normalisierte Source (z.B. reine Header-only Datei ohne Code)
+    // → Fallback auf lokale Kompilierung, da Cache-Hit sinnlos wäre
+    if (normalized_source.empty()) {
+        return run_fallback_local(argv);
+    }
 
     // Berechne den kollisionsfreien SHA-256 Hash
     std::string source_hash = suco::calculate_sha256(
@@ -455,9 +489,15 @@ int main(int argc, char** argv) {
         return run_fallback_local(argv);
     }
 
-    // Construct compiler command to send to coordinator
+    // Construct compiler command to send to coordinator (use space-separated for actual command)
     std::stringstream remote_cmd;
-    remote_cmd << compiler << " " << flags_str;
+    remote_cmd << compiler;
+    for (const auto& f : clean_flags) {
+        remote_cmd << " " << f;
+    }
+    if (!lang_standard.empty()) {
+        remote_cmd << " " << lang_standard;
+    }
     std::string remote_cmd_str = remote_cmd.str();
 
     // 1. Send CACHE_QUERY packet

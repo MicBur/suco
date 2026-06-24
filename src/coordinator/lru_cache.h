@@ -157,7 +157,9 @@ public:
     }
 
     // Store compiled results to cache
-    void put(const std::string& hash, const std::vector<uint8_t>& obj_data, const std::string& log_data, const std::string& source_file = "", const std::string& compiler_command = "") {
+    void put(const std::string& hash, const std::vector<uint8_t>& obj_data, const std::string& log_data,
+             const std::string& source_file = "", const std::string& compiler_command = "",
+             const std::string& metadata_json = "") {
         std::lock_guard<std::mutex> lock(mutex_);
         auto paths = get_cache_paths(hash);
         if (paths.first.empty()) return;
@@ -181,19 +183,24 @@ public:
             }
         }
 
-        // Write meta file
+        // Write meta file with enriched metadata
         std::string meta_path = paths.first.substr(0, paths.first.size() - 2) + ".meta";
         std::ofstream meta_file(meta_path);
         if (meta_file.is_open()) {
             auto now = std::chrono::system_clock::now();
             auto epoch = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
             meta_file << "{\n";
+            meta_file << "  \"cache_version\": \"v1\",\n";
             meta_file << "  \"hash\": \"" << hash << "\",\n";
             meta_file << "  \"source_file\": \"" << escape_json(source_file) << "\",\n";
             meta_file << "  \"compiler_command\": \"" << escape_json(compiler_command) << "\",\n";
             meta_file << "  \"timestamp\": " << epoch << ",\n";
-            meta_file << "  \"binary_size\": " << obj_data.size() << "\n";
-            meta_file << "}\n";
+            meta_file << "  \"binary_size\": " << obj_data.size();
+            // Append extra metadata if provided (compiler_version, target, etc.)
+            if (!metadata_json.empty()) {
+                meta_file << ",\n  " << metadata_json;
+            }
+            meta_file << "\n}\n";
             meta_file.close();
         }
 
