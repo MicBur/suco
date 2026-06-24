@@ -1,6 +1,25 @@
-# SUCO Lite (SUper COmpiler wrapper)
+<p align="center">
+  <img src="assets/suco_banner.png" alt="SUCO Banner" width="100%">
+</p>
 
-SUCO Lite ist ein extrem schnelles, verteiltes C/C++ Kompilierungs- und Caching-System für lokale Netzwerke (LAN). Es dient als performante, leichtgewichtige Open-Source-Alternative zu IncrediBuild oder Icecream und bietet Zero-Configuration-Setup per UDP Auto-Discovery, einen zweistufigen SSD LRU-Cache im Coordinator sowie ein modernes Web-Dashboard.
+<p align="center">
+  <img src="assets/suco_logo.png" alt="SUCO Logo" width="120">
+</p>
+
+<h1 align="center">SUCO Lite</h1>
+<p align="center">
+  <strong>SUper COmpiler wrapper – Ein ultraschnelles, verteiltes C/C++ Kompilierungs- und Caching-System für lokale Netzwerke (LAN).</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/github/v/release/MicBur/suco?color=blue&logo=github" alt="GitHub Release"></a>
+  <a href="https://github.com/MicBur/suco/actions"><img src="https://img.shields.io/github/actions/workflow/status/MicBur/suco/cmake.yml?branch=main&logo=github-actions" alt="Build Status"></a>
+  <a href="https://github.com/MicBur/suco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MicBur/suco?color=green" alt="License"></a>
+</p>
+
+---
+
+SUCO Lite ist eine hochperformante, leichtgewichtige Alternative zu teuren proprietären Lösungen wie IncrediBuild oder veralteten Systemen wie Icecream. Es kombiniert Zero-Configuration-Setup per UDP Auto-Discovery, einen zweistufigen SSD LRU-Cache im Coordinator sowie ein modernes Web-Dashboard im Liquid-Glass-Design.
 
 ---
 
@@ -15,7 +34,7 @@ Ein Benchmark mit einer extrem großen C++-Datei (~318.000 Zeilen präprozessier
 
 ### Warum ist der Cache so extrem schnell?
 Der klassische C++ Kompilierungsprozess besteht aus vier Hauptphasen:
-1. **Präprozessierung:** Expandieren von Makros, Auflösen von `#include`-Direktiven. Das ist primär schneller Text-I/O und geht extrem flink (Bruchteil einer Sec).
+1. **Präprozessierung:** Expandieren von Makros, Auflösen von `#include`-Direktiven. Das ist primär schneller Text-I/O und geht extrem flink (Bruchteil einer Sekunde).
 2. **Parsing & semantische Analyse:** Aufbau des Abstract Syntax Tree (AST), Auflösung komplexer Template-Instanziierungen (z. B. `<vector>`, `<map>`, Header-Only-Bibliotheken). Dies ist hochgradig CPU-intensiv.
 3. **Optimierung:** Code-Optimierungen (`-O2`, `-O3`), Inlining, Loop Unrolling. Dies dauert am längsten.
 4. **Codegenerierung:** Schreiben der Binärdatei (`.o` bzw. `.obj`).
@@ -122,6 +141,10 @@ Ersetze in deinen Makefiles, CMake-Dateien oder Build-Skripten den Compiler-Aufr
 
 ## 📊 Live Web-Dashboard
 Der Coordinator stellt unter `http://localhost:9001` ein schickes, interaktives Dashboard zur Verfügung:
-- **Echtzeit-Statistiken:** Cache-Hits, Cache-Misses, Hit-Rate in %.
-- **Worker-Übersicht:** Auflistung aller aktiven Worker im LAN mit deren CPU-Auslastung und Slot-Belegung.
-- **Verbindungsstatus:** Zeigt an, wie viele Clients und Worker aktuell aktiv sind.
+* **Echtzeit-Statistiken:** Cache-Hits, Cache-Misses, Hit-Rate in %.
+* **Worker-Übersicht:** Live-Liste der CPU-Auslastung aller Kerne.
+* **Verbindungsstatus:** Zeigt aktive Kompilierungen mit tickenden Timern an.
+
+<p align="center">
+  <img src="assets/dashboard_preview.png" alt="SUCO Dashboard Vorschau" width="100%">
+</p>
