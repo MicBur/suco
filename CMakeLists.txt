@@ -31,6 +31,7 @@ add_executable(suco
     src/client/logging.cpp
     src/client/client_config.cpp
     src/client/local_compiler.cpp
+    src/client/network_client.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco
