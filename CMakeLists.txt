@@ -32,6 +32,7 @@ add_executable(suco
     src/client/client_config.cpp
     src/client/local_compiler.cpp
     src/client/network_client.cpp
+    src/client/suco_client.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco
