@@ -465,16 +465,12 @@ int main(int argc, char** argv) {
         return run_fallback_local(argv);
     }
 
-    // Berechne den kollisionsfreien SHA-256 Hash
-    std::string source_hash = suco::calculate_sha256(
-        normalized_source,
-        compiler_version,
-        target_architecture,
-        lang_standard,
-        sorted_defines_str,
-        sorted_include_paths_str,
-        flags_str
-    );
+    // Compute versioned cache hash over normalized source and build metadata
+    suco::CacheKeyInput cache_key{
+        target_architecture, compiler_version, lang_standard,
+        sorted_defines_str, sorted_include_paths_str, flags_str
+    };
+    std::string source_hash = suco::compute_cache_hash(normalized_source, cache_key);
 
     // Get coordinator host
     std::string coordinator_host = "127.0.0.1";

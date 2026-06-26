@@ -1,154 +1,154 @@
 #include "hash_util.h"
+
 #include <openssl/evp.h>
-#include <iomanip>
-#include <sstream>
-#include <cstring>
 #include <cctype>
+#include <cstring>
+#include <memory>
 
 namespace suco {
+namespace {
 
-std::string normalize_preprocessed_source(const std::string& input) {
-    // Guard: leerer Input → leerer Output
-    if (input.empty()) {
-        return "";
+// RAII wrapper for OpenSSL digest context.
+struct EvpCtxDeleter {
+    void operator()(EVP_MD_CTX* ctx) const { EVP_MD_CTX_free(ctx); }
+};
+using EvpCtx = std::unique_ptr<EVP_MD_CTX, EvpCtxDeleter>;
+
+// Returns true if the line (after '#' and whitespace) is a preprocessor
+// location marker that should be stripped for cache normalization.
+// Covers: "#line 42 ..." (MSVC), "# 42 ..." (GCC/Clang), "#pragma once".
+bool is_strippable_directive(const char* line, size_t len, size_t hash_pos) {
+    size_t i = hash_pos + 1;
+    while (i < len && (line[i] == ' ' || line[i] == '\t'))
+        ++i;
+
+    if (i >= len)
+        return false;
+
+    // "# 123 ..." — GCC/Clang line marker
+    if (std::isdigit(static_cast<unsigned char>(line[i])))
+        return true;
+
+    // "#line ..." — MSVC line marker
+    if (len - i >= 4 && std::strncmp(line + i, "line", 4) == 0)
+        return true;
+
+    // "#pragma once" — irrelevant for object output
+    if (len - i >= 6 && std::strncmp(line + i, "pragma", 6) == 0) {
+        size_t j = i + 6;
+        while (j < len && (line[j] == ' ' || line[j] == '\t'))
+            ++j;
+        if (len - j >= 4 && std::strncmp(line + j, "once", 4) == 0)
+            return true;
     }
 
-    std::string output;
-    output.reserve(input.size());
+    return false;
+}
 
-    const char* data = input.data();
-    size_t size = input.size();
-    size_t start = 0;
+std::string to_hex(const unsigned char* data, unsigned int len) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(len * 2);
+    for (unsigned int i = 0; i < len; ++i) {
+        result += digits[(data[i] >> 4) & 0x0F];
+        result += digits[data[i] & 0x0F];
+    }
+    return result;
+}
 
-    while (start < size) {
-        // Fast hardware-backed scanning for the next newline character using memchr
-        const char* next_newline = static_cast<const char*>(std::memchr(data + start, '\n', size - start));
-        size_t end = next_newline ? (next_newline - data) : size;
-        size_t len = end - start;
-        const char* line_ptr = data + start;
+} // anonymous namespace
 
-        // Strip trailing \r (Windows CRLF → LF normalization)
-        while (len > 0 && line_ptr[len - 1] == '\r') {
-            len--;
-        }
+// ---------------------------------------------------------------------------
+// Source normalization
+// ---------------------------------------------------------------------------
 
-        // Skip leading whitespace
-        size_t first_non_ws = 0;
-        while (first_non_ws < len && (line_ptr[first_non_ws] == ' ' || line_ptr[first_non_ws] == '\t')) {
-            first_non_ws++;
-        }
+std::string normalize_preprocessed_source(const std::string& source) {
+    if (source.empty())
+        return {};
 
-        // Entirely skip empty or whitespace-only lines
-        if (first_non_ws >= len) {
-            start = end + 1;
+    std::string out;
+    out.reserve(source.size());
+
+    const char* data = source.data();
+    const size_t total = source.size();
+    size_t pos = 0;
+
+    while (pos < total) {
+        // Scan for the next newline using memchr (typically a single x86 instruction).
+        auto* nl = static_cast<const char*>(std::memchr(data + pos, '\n', total - pos));
+        size_t eol = nl ? static_cast<size_t>(nl - data) : total;
+        size_t len = eol - pos;
+        const char* line = data + pos;
+
+        // Trim trailing carriage returns (CRLF → LF).
+        while (len > 0 && line[len - 1] == '\r')
+            --len;
+
+        // Find first non-whitespace character.
+        size_t first = 0;
+        while (first < len && (line[first] == ' ' || line[first] == '\t'))
+            ++first;
+
+        // Skip blank lines.
+        if (first >= len) {
+            pos = eol + 1;
             continue;
         }
 
-        // Detect lines starting with '#'
-        if (line_ptr[first_non_ws] == '#') {
-            size_t idx = first_non_ws + 1;
-            while (idx < len && (line_ptr[idx] == ' ' || line_ptr[idx] == '\t')) {
-                idx++;
-            }
-
-            if (idx < len) {
-                // MSVC path markers: #line ...
-                if (len - idx >= 4 && std::strncmp(line_ptr + idx, "line", 4) == 0) {
-                    start = end + 1;
-                    continue;
-                }
-
-                // GCC & MSVC Fallback markers: # <line_number> ...
-                if (std::isdigit(static_cast<unsigned char>(line_ptr[idx]))) {
-                    start = end + 1;
-                    continue;
-                }
-
-                // #pragma once → skip (Header-only edge case, irrelevant für Objekt-Output)
-                if (len - idx >= 11 && std::strncmp(line_ptr + idx, "pragma", 6) == 0) {
-                    size_t prag_idx = idx + 6;
-                    while (prag_idx < len && (line_ptr[prag_idx] == ' ' || line_ptr[prag_idx] == '\t')) {
-                        prag_idx++;
-                    }
-                    if (prag_idx + 4 <= len && std::strncmp(line_ptr + prag_idx, "once", 4) == 0) {
-                        start = end + 1;
-                        continue;
-                    }
-                }
-            }
+        // Skip preprocessor location markers and #pragma once.
+        if (line[first] == '#' && is_strippable_directive(line, len, first)) {
+            pos = eol + 1;
+            continue;
         }
 
-        // Write non-path, non-empty code lines (without trailing \r)
-        output.append(line_ptr, len);
-        output += '\n';
-
-        start = end + 1;
+        out.append(line, len);
+        out += '\n';
+        pos = eol + 1;
     }
-    return output;
+
+    return out;
 }
 
-std::string calculate_sha256(
-    const std::string& normalized_source,
-    const std::string& compiler_version,
-    const std::string& target_architecture,
-    const std::string& language_standard,
-    const std::string& sorted_defines,
-    const std::string& sorted_include_paths,
-    const std::string& flags_normalized
-) {
-    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
-    if (mdctx == nullptr) {
-        return "";
-    }
+// ---------------------------------------------------------------------------
+// Cache hash computation
+// ---------------------------------------------------------------------------
 
-    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), nullptr) != 1) {
-        EVP_MD_CTX_free(mdctx);
-        return "";
-    }
+std::string compute_cache_hash(const std::string& normalized_source,
+                               const CacheKeyInput& key) {
+    EvpCtx ctx(EVP_MD_CTX_new());
+    if (!ctx)
+        return {};
 
-    // Hash structure: v1:\x1F<Target>\x1F<Compiler>\x1F<Std>\x1F<Defines>\x1F<Includes>\x1F<Flags>\x1F<Source>
-    // Delimiter is 0x1F (ASCII Unit Separator)
-    const char delimiter = '\x1F';
-    const std::string prefix = "v1:";
+    if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1)
+        return {};
 
-    auto update_hash = [&](const std::string& str) -> bool {
-        return EVP_DigestUpdate(mdctx, str.c_str(), str.size()) == 1;
+    // Feed all components into the digest, separated by 0x1F (Unit Separator).
+    // Layout: v1:<0x1F>arch<0x1F>compiler<0x1F>std<0x1F>defines<0x1F>includes<0x1F>flags<0x1F>source
+    constexpr char sep = '\x1F';
+    const std::string_view parts[] = {
+        "v1:",
+        key.target_arch,
+        key.compiler_version,
+        key.language_standard,
+        key.sorted_defines,
+        key.sorted_includes,
+        key.normalized_flags,
+        normalized_source
     };
 
-    auto update_delimiter = [&]() -> bool {
-        return EVP_DigestUpdate(mdctx, &delimiter, 1) == 1;
-    };
-
-    if (!update_hash(prefix) || !update_delimiter() ||
-        !update_hash(target_architecture) || !update_delimiter() ||
-        !update_hash(compiler_version) || !update_delimiter() ||
-        !update_hash(language_standard) || !update_delimiter() ||
-        !update_hash(sorted_defines) || !update_delimiter() ||
-        !update_hash(sorted_include_paths) || !update_delimiter() ||
-        !update_hash(flags_normalized) || !update_delimiter() ||
-        !update_hash(normalized_source)) {
-        EVP_MD_CTX_free(mdctx);
-        return "";
+    for (size_t i = 0; i < std::size(parts); ++i) {
+        if (i > 0 && EVP_DigestUpdate(ctx.get(), &sep, 1) != 1)
+            return {};
+        if (EVP_DigestUpdate(ctx.get(), parts[i].data(), parts[i].size()) != 1)
+            return {};
     }
 
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int hash_len = 0;
-    if (EVP_DigestFinal_ex(mdctx, hash, &hash_len) != 1) {
-        EVP_MD_CTX_free(mdctx);
-        return "";
-    }
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    if (EVP_DigestFinal_ex(ctx.get(), digest, &digest_len) != 1)
+        return {};
 
-    EVP_MD_CTX_free(mdctx);
-
-    // Fast hex encoding without stringstream overhead
-    static const char hex_chars[] = "0123456789abcdef";
-    std::string result;
-    result.reserve(hash_len * 2);
-    for (unsigned int i = 0; i < hash_len; i++) {
-        result += hex_chars[(hash[i] >> 4) & 0x0F];
-        result += hex_chars[hash[i] & 0x0F];
-    }
-    return result;
+    return to_hex(digest, digest_len);
 }
 
 } // namespace suco

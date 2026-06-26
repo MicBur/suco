@@ -1,24 +1,24 @@
-#ifndef SUCO_HASH_UTIL_H
-#define SUCO_HASH_UTIL_H
+#pragma once
 
 #include <string>
+#include <vector>
 
 namespace suco {
 
-// Normalizes the preprocessed source by stripping path-dependent #line directives (linear O(N) memchr implementation)
-std::string normalize_preprocessed_source(const std::string& input);
+struct CacheKeyInput {
+    std::string target_arch;
+    std::string compiler_version;
+    std::string language_standard;
+    std::string sorted_defines;
+    std::string sorted_includes;
+    std::string normalized_flags;
+};
 
-// Calculates SHA-256 using the modern EVP OpenSSL API, combining the normalized source with versioning and target metadata
-std::string calculate_sha256(
-    const std::string& normalized_source,
-    const std::string& compiler_version,
-    const std::string& target_architecture,
-    const std::string& language_standard,
-    const std::string& sorted_defines,
-    const std::string& sorted_include_paths,
-    const std::string& flags_normalized
-);
+// Strips #line directives, blank lines, and CRLF artifacts from preprocessed source.
+std::string normalize_preprocessed_source(const std::string& source);
+
+// Computes a versioned SHA-256 over the normalized source and all build metadata.
+std::string compute_cache_hash(const std::string& normalized_source,
+                               const CacheKeyInput& key);
 
 } // namespace suco
-
-#endif // SUCO_HASH_UTIL_H

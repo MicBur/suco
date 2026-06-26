@@ -26,6 +26,7 @@ endif()
 # Client: suco (Compiler wrapper)
 add_executable(suco
     src/client/main.cpp
+    src/client/compiler_command.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco
