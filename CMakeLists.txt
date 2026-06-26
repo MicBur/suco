@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(suco CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find OpenSSL for SHA-256 hashing
@@ -27,6 +27,8 @@ endif()
 add_executable(suco
     src/client/main.cpp
     src/client/compiler_command.cpp
+    src/client/utils.cpp
+    src/client/logging.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco
