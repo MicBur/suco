@@ -97,6 +97,7 @@ struct RunningJobDetail {
     std::string command;
     std::string source;
     socket_t client_sock;
+    int attempts = 0;
 };
 
 std::mutex g_running_details_mutex;
@@ -168,18 +169,50 @@ void handle_worker_disconnect(const std::string& worker_ip) {
             std::lock_guard<std::mutex> lock(g_running_details_mutex);
             auto it = g_running_job_details.find(filename);
             if (it != g_running_job_details.end()) {
-                details = it->second;
-                found = true;
+                if (it->second.attempts >= 3) {
+                    std::cerr << "suco-coordinator error: Job " << filename 
+                              << " reached max reschedule attempts (3). Aborting." << std::endl;
+                    
+                    std::shared_ptr<CompileResult> res;
+                    {
+                        std::lock_guard<std::mutex> res_lock(g_results_mutex);
+                        auto res_it = g_compile_results.find(filename);
+                        if (res_it != g_compile_results.end()) res = res_it->second;
+                    }
+                    if (res) {
+                        std::lock_guard<std::mutex> l(res->mutex);
+                        res->exit_code = -1;
+                        res->log = "suco-coordinator error: Compilation failed after 3 reschedule attempts due to worker crashes.";
+                        res->ready = true;
+                        res->cv.notify_all();
+                    }
+                    g_running_job_details.erase(it);
+                } else {
+                    it->second.attempts++;
+                    details = it->second;
+                    found = true;
+                }
             }
         }
 
         if (!found) continue;
 
         g_state.mutex.lock();
-        int worker_idx = get_best_worker_index();
+        int worker_idx = -1;
+        int retries = 0;
+        while (retries < 100) { // Max 10 Sekunden warten (100 * 100ms)
+            worker_idx = get_best_worker_index();
+            if (worker_idx >= 0) break;
+            
+            g_state.mutex.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            g_state.mutex.lock();
+            retries++;
+        }
+
         if (worker_idx < 0) {
             g_state.mutex.unlock();
-            std::cerr << "suco-coordinator error: No other worker available to reschedule " << filename << std::endl;
+            std::cerr << "suco-coordinator error: No other worker available (after 10s wait) to reschedule " << filename << std::endl;
             
             std::shared_ptr<CompileResult> res;
             {
@@ -205,8 +238,9 @@ void handle_worker_disconnect(const std::string& worker_ip) {
         g_state.active_jobs.push_back(new_job);
         g_state.mutex.unlock();
 
-        std::cout << "suco-coordinator: Rescheduling job " << filename << " to worker " 
-                  << new_worker->name << " (" << new_worker_ip << ")" << std::endl;
+        std::cout << "suco-coordinator: Rescheduling job " << filename 
+                  << " [Attempt " << details.attempts << "/3] from crashed worker " << worker_ip 
+                  << " to worker " << new_worker->name << " (" << new_worker_ip << ")" << std::endl;
 
         std::thread([new_worker, filename, details]() {
             std::lock_guard<std::mutex> lock(new_worker->write_mutex);
@@ -262,7 +296,7 @@ void run_worker_monitor() {
         
         for (auto it = g_state.workers.begin(); it != g_state.workers.end();) {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - (*it)->last_heartbeat).count();
-            if (elapsed > 12) {
+            if (elapsed > 8) {
                 std::cout << "suco-coordinator: Worker " << (*it)->name << " (" << (*it)->ip 
                           << ") disconnected (heartbeat timeout)." << std::endl;
                 std::string ip_to_cleanup = (*it)->ip;
@@ -614,7 +648,7 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         // Registriere Job-Details für eventuelles Failover/Rescheduling
         {
             std::lock_guard<std::mutex> lock(g_running_details_mutex);
-            g_running_job_details[filename] = RunningJobDetail{ hash, command, source, client_sock };
+            g_running_job_details[filename] = RunningJobDetail{ hash, command, source, client_sock, 1 };
         }
 
         g_state.mutex.lock();
@@ -797,6 +831,17 @@ void handle_worker_connection(socket_t worker_sock, std::string worker_ip) {
 
     std::cout << "suco-coordinator: Worker registered: " << name << " (" << worker_ip 
               << ", OS: " << os_str << ", Cores: " << slots_total << ")" << std::endl;
+
+    // Set socket receive timeout (10 seconds)
+#ifdef _WIN32
+    int timeout_ms = 10000;
+    setsockopt(worker_sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+#else
+    struct timeval tv;
+    tv.tv_sec = 10;
+    tv.tv_usec = 0;
+    setsockopt(worker_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
 
     auto node = std::make_shared<WorkerNode>();
     node->socket = worker_sock;
