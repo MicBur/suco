@@ -44,6 +44,7 @@ target_link_libraries(suco
 add_executable(suco-coordinator
     src/coordinator/main.cpp
     src/coordinator/config.cpp
+    src/coordinator/worker_manager.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco-coordinator
