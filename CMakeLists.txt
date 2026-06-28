@@ -50,6 +50,7 @@ add_executable(suco-coordinator
     src/coordinator/coordinator.cpp
     src/coordinator/network_server.cpp
     src/coordinator/client_handler.cpp
+    src/coordinator/worker_handler.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco-coordinator
