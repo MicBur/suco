@@ -102,6 +102,29 @@ struct RunningJobDetail {
 
 std::mutex g_running_details_mutex;
 std::unordered_map<std::string, RunningJobDetail> g_running_job_details;
+std::unordered_map<std::string, double> g_worker_weights;
+
+void parse_worker_weights() {
+    const char* env_weights = std::getenv("SUCO_WORKER_WEIGHTS");
+    if (!env_weights) {
+        return;
+    }
+    std::string s(env_weights);
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        size_t colon = item.find(':');
+        if (colon != std::string::npos) {
+            std::string name = item.substr(0, colon);
+            std::string weight_str = item.substr(colon + 1);
+            try {
+                double w = std::stod(weight_str);
+                g_worker_weights[name] = w;
+                std::cout << "suco-coordinator: Configured weight for worker " << name << " = " << w << std::endl;
+            } catch (...) {}
+        }
+    }
+}
 
 int get_best_worker_index();
 
@@ -492,18 +515,32 @@ void run_web_server(uint16_t port) {
     close_socket(server_fd);
 }
 
-// Least-Loaded Scheduler: Finds best available worker. Assumes lock is held.
+// Weighted Scheduler: Score = Worker_Weight / (1 + slots_used)
+// Bevorzugt stärkere Nodes, verteilt Last bei steigender Belegung.
+// Assumes g_state.mutex is held.
 int get_best_worker_index() {
     int best_idx = -1;
-    double best_ratio = -1.0;
+    double best_score = -1.0;
 
     for (size_t i = 0; i < g_state.workers.size(); ++i) {
         const auto& w = g_state.workers[i];
         int free_slots = w->slots_total - w->slots_used;
         if (free_slots > 0) {
-            double ratio = static_cast<double>(free_slots) / w->slots_total;
-            if (ratio > best_ratio) {
-                best_ratio = ratio;
+            // Bestimme Gewicht (aus g_worker_weights, Fallback: 1.0)
+            double weight = 1.0;
+            auto it = g_worker_weights.find(w->name);
+            if (it != g_worker_weights.end()) {
+                weight = it->second;
+            } else {
+                auto it_ip = g_worker_weights.find(w->ip);
+                if (it_ip != g_worker_weights.end()) {
+                    weight = it_ip->second;
+                }
+            }
+
+            double score = weight / (1.0 + w->slots_used);
+            if (score > best_score) {
+                best_score = score;
                 best_idx = static_cast<int>(i);
             }
         }
@@ -679,6 +716,21 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         socket_t worker_sock = worker->socket;
         std::string worker_ip = worker->ip;
         
+        double weight = 1.0;
+        auto it_w = g_worker_weights.find(worker->name);
+        if (it_w != g_worker_weights.end()) {
+            weight = it_w->second;
+        } else {
+            auto it_ip = g_worker_weights.find(worker->ip);
+            if (it_ip != g_worker_weights.end()) weight = it_ip->second;
+        }
+        double score = weight / (1.0 + (worker->slots_used - 1));
+
+        std::cout << "suco-coordinator: Dispatching job " << filename << " to worker " 
+                  << worker->name << " (" << worker_ip << "). [Weight: " << weight 
+                  << ", Slots: " << (worker->slots_used - 1) << "/" << worker->slots_total 
+                  << ", Score: " << score << "]" << std::endl;
+
         ActiveJob job{ filename, worker_ip, std::chrono::steady_clock::now() };
         g_state.active_jobs.push_back(job);
         g_state.mutex.unlock();
@@ -970,6 +1022,7 @@ void handle_worker_connection(socket_t worker_sock, std::string worker_ip) {
 
 int main() {
     suco::SocketInit sock_init;
+    suco::parse_worker_weights();
 
     // Cache Path selection based on OS
     std::string cache_path = "~/.cache/suco/";
