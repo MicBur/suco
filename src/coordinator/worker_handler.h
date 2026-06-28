@@ -2,10 +2,12 @@
 
 #include <memory>
 #include <string>
+#include <functional>
 #include "config.h"
 #include "worker_manager.h"
 #include "job_queue.h"
 #include "socket_util.h"
+#include "coordinator_types.h"
 
 namespace suco {
 
@@ -16,25 +18,31 @@ namespace suco {
  */
 class WorkerHandler {
 public:
+    using DisconnectHandler = std::function<void(const std::string&)>;
+
     /**
-     * @brief Konstruiert den WorkerHandler mit den benötigten Modulen.
+     * @brief Konstruiert den WorkerHandler mit den benötigten Modulen und Callbacks.
      */
     WorkerHandler(const CoordinatorConfig& config, 
                   WorkerManager& worker_manager, 
-                  JobQueue& job_queue);
+                  JobQueue& job_queue,
+                  SharedCoordinatorState& state,
+                  DisconnectHandler disconnect_handler);
     ~WorkerHandler() = default;
 
     /**
-     * @brief Verarbeitet die Verbindung eines neu registrierten Workers.
+     * @brief Verarbeitet eine eingehende Worker-Verbindung threadsicher.
      * @param worker_sock Das Kommunikationssocket zum Worker.
      * @param worker_ip Die IP-Adresse des Workers.
      */
-    void handle_worker_connection(socket_t worker_sock, const std::string& worker_ip);
+    void handle_worker_connection(socket_t worker_sock);
 
 private:
     const CoordinatorConfig& m_config;
     WorkerManager& m_worker_manager;
     JobQueue& m_job_queue;
+    SharedCoordinatorState& m_state;
+    DisconnectHandler m_disconnect_handler;
 };
 
 } // namespace suco

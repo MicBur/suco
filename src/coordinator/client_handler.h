@@ -7,6 +7,8 @@
 #include "scheduler.h"
 #include "worker_manager.h"
 #include "socket_util.h"
+#include "coordinator_types.h"
+#include "lru_cache.h"
 
 namespace suco {
 
@@ -17,12 +19,14 @@ namespace suco {
 class ClientHandler {
 public:
     /**
-     * @brief Konstruiert den ClientHandler mit den benötigten Orchestrator-Modulen.
+     * @brief Konstruiert den ClientHandler mit den benötigten Modulen und dem geteilten Zustand.
      */
     ClientHandler(const CoordinatorConfig& config, 
                   JobQueue& job_queue, 
                   const Scheduler& scheduler, 
-                  WorkerManager& worker_manager);
+                  WorkerManager& worker_manager,
+                  SharedCoordinatorState& state,
+                  std::unique_ptr<LruCache>& cache);
     ~ClientHandler() = default;
 
     /**
@@ -30,13 +34,15 @@ public:
      * @param client_sock Der Kommunikationssocket zum Client.
      * @param client_ip Die IP-Adresse des Clients.
      */
-    void handle_client_connection(socket_t client_sock, const std::string& client_ip);
+    void handle_client_connection(socket_t client_sock);
 
 private:
     const CoordinatorConfig& m_config;
     JobQueue& m_job_queue;
     const Scheduler& m_scheduler;
     WorkerManager& m_worker_manager;
+    SharedCoordinatorState& m_state;
+    std::unique_ptr<LruCache>& m_cache;
 };
 
 } // namespace suco

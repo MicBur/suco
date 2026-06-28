@@ -1,6 +1,5 @@
 #include "client_handler.h"
 #include "protocol.h"
-#include "lru_cache.h"
 #include <iostream>
 #include <vector>
 #include <condition_variable>
@@ -14,66 +13,30 @@
 
 namespace suco {
 
-// Diese Deklarationen müssen exakt mit den Definitionen im Namespace suco in main.cpp übereinstimmen
-struct ActiveJob {
-    std::string filename;
-    std::string worker_ip;
-    std::chrono::steady_clock::time_point start_time;
-};
-
-struct RecentJob {
-    std::string filename;
-    int32_t exit_code;
-    bool cache_hit;
-};
-
-struct CoordinatorState {
-    std::mutex mutex;
-    std::vector<std::shared_ptr<WorkerNode>> workers;
-    uint64_t total_requests;
-    uint64_t cache_hits;
-    uint64_t cache_misses;
-    std::unordered_map<std::string, std::vector<socket_t>> pending_compilations;
-    std::vector<ActiveJob> active_jobs;
-    std::vector<RecentJob> recent_jobs;
-};
-
-struct RunningJobDetail {
-    std::string hash;
-    std::string command;
-    std::string source;
-    socket_t client_sock;
-    int attempts;
-};
-
-struct CompileResult {
-    bool ready;
-    int32_t exit_code;
-    std::string log;
-    std::vector<uint8_t> bin;
-    std::condition_variable cv;
-    std::mutex mutex;
-};
-
-// Externs im Namespace suco
-extern LruCache* g_cache;
-extern CoordinatorState g_state;
-extern std::mutex g_results_mutex;
-extern std::unordered_map<std::string, std::shared_ptr<CompileResult>> g_compile_results;
-extern std::mutex g_running_details_mutex;
-extern std::unordered_map<std::string, RunningJobDetail> g_running_job_details;
-extern std::unordered_map<std::string, double> g_worker_weights;
-
 ClientHandler::ClientHandler(const CoordinatorConfig& config, 
                              JobQueue& job_queue, 
                              const Scheduler& scheduler, 
-                             WorkerManager& worker_manager)
+                             WorkerManager& worker_manager,
+                             SharedCoordinatorState& state,
+                             std::unique_ptr<LruCache>& cache)
     : m_config(config),
       m_job_queue(job_queue),
       m_scheduler(scheduler),
-      m_worker_manager(worker_manager) {}
+      m_worker_manager(worker_manager),
+      m_state(state),
+      m_cache(cache) {}
 
-void ClientHandler::handle_client_connection(socket_t client_sock, const std::string& client_ip) {
+static std::string get_socket_ip(socket_t sock) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sock, (struct sockaddr*)&addr, &addr_len) == 0) {
+        return inet_ntoa(addr.sin_addr);
+    }
+    return "unknown";
+}
+
+void ClientHandler::handle_client_connection(socket_t client_sock) {
+    std::string client_ip = get_socket_ip(client_sock);
     uint32_t type_net = 0;
     if (!read_all(client_sock, &type_net, 4)) {
         close_socket(client_sock);
@@ -111,22 +74,22 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         std::vector<uint8_t> cached_obj;
         std::string cached_log;
         bool cache_found = false;
-        if (g_cache) {
-            cache_found = g_cache->get(hash, cached_obj, cached_log);
+        if (m_cache) {
+            cache_found = m_cache->get(hash, cached_obj, cached_log);
         }
 
         if (cache_found) {
             std::cout << "suco-coordinator: Cache HIT for job " << query_filename 
                       << " (hash: " << hash << ")" << std::endl;
             {
-                std::lock_guard<std::mutex> lock(g_state.mutex);
-                g_state.total_requests++;
-                g_state.cache_hits++;
+                std::lock_guard<std::mutex> lock(m_state.mutex);
+                m_state.total_requests++;
+                m_state.cache_hits++;
                 
                 RecentJob rj{ query_filename, 0, true };
-                g_state.recent_jobs.push_back(rj);
-                if (g_state.recent_jobs.size() > 20) {
-                    g_state.recent_jobs.erase(g_state.recent_jobs.begin());
+                m_state.recent_jobs.push_back(rj);
+                if (m_state.recent_jobs.size() > 20) {
+                    m_state.recent_jobs.erase(m_state.recent_jobs.begin());
                 }
             }
             uint32_t resp_type = htonl(PACKET_CACHE_HIT);
@@ -149,41 +112,41 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         std::cout << "suco-coordinator: Cache MISS for job " << query_filename 
                   << " (hash: " << hash << ")" << std::endl;
 
-        g_state.mutex.lock();
-        auto it = g_state.pending_compilations.find(hash);
-        if (it != g_state.pending_compilations.end()) {
+        m_state.mutex.lock();
+        auto it = m_state.pending_compilations.find(hash);
+        if (it != m_state.pending_compilations.end()) {
             it->second.push_back(client_sock);
-            g_state.total_requests++;
-            g_state.cache_misses++;
-            g_state.mutex.unlock();
+            m_state.total_requests++;
+            m_state.cache_misses++;
+            m_state.mutex.unlock();
             return;
         }
 
-        g_state.pending_compilations[hash] = {};
-        g_state.total_requests++;
-        g_state.cache_misses++;
-        g_state.mutex.unlock();
+        m_state.pending_compilations[hash] = {};
+        m_state.total_requests++;
+        m_state.cache_misses++;
+        m_state.mutex.unlock();
 
         uint32_t resp_type = htonl(PACKET_CACHE_MISS);
         if (!send_all(client_sock, &resp_type, 4)) {
-            std::lock_guard<std::mutex> lock(g_state.mutex);
-            g_state.pending_compilations.erase(hash);
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            m_state.pending_compilations.erase(hash);
             close_socket(client_sock);
             return;
         }
 
         uint32_t compile_req_type_net = 0;
         if (!read_all(client_sock, &compile_req_type_net, 4)) {
-            std::lock_guard<std::mutex> lock(g_state.mutex);
-            g_state.pending_compilations.erase(hash);
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            m_state.pending_compilations.erase(hash);
             close_socket(client_sock);
             return;
         }
 
         uint32_t cmd_len_net = 0, file_len_net = 0, src_len_net = 0;
         if (!read_all(client_sock, &cmd_len_net, 4)) {
-            std::lock_guard<std::mutex> lock(g_state.mutex);
-            g_state.pending_compilations.erase(hash);
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            m_state.pending_compilations.erase(hash);
             close_socket(client_sock);
             return;
         }
@@ -193,8 +156,8 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         std::string command(cmd_buf.data(), cmd_len);
 
         if (!read_all(client_sock, &file_len_net, 4)) {
-            std::lock_guard<std::mutex> lock(g_state.mutex);
-            g_state.pending_compilations.erase(hash);
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            m_state.pending_compilations.erase(hash);
             close_socket(client_sock);
             return;
         }
@@ -204,8 +167,8 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         std::string filename(file_buf.data(), file_len);
 
         if (!read_all(client_sock, &src_len_net, 4)) {
-            std::lock_guard<std::mutex> lock(g_state.mutex);
-            g_state.pending_compilations.erase(hash);
+            std::lock_guard<std::mutex> lock(m_state.mutex);
+            m_state.pending_compilations.erase(hash);
             close_socket(client_sock);
             return;
         }
@@ -216,8 +179,8 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
 
         // Registriere Job-Details für eventuelles Failover/Rescheduling
         {
-            std::lock_guard<std::mutex> lock(g_running_details_mutex);
-            g_running_job_details[filename] = RunningJobDetail{ hash, command, source, client_sock, 1 };
+            std::lock_guard<std::mutex> lock(m_state.running_details_mutex);
+            m_state.running_job_details[filename] = RunningJobDetail{ hash, command, source, client_sock, 1 };
         }
 
         // Verwende den ausgelagerten WorkerManager und den Scheduler
@@ -232,13 +195,13 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
 
         if (!best_worker) {
             // Kein Worker frei
-            g_state.mutex.lock();
-            g_state.pending_compilations.erase(hash);
-            g_state.mutex.unlock();
+            m_state.mutex.lock();
+            m_state.pending_compilations.erase(hash);
+            m_state.mutex.unlock();
 
             {
-                std::lock_guard<std::mutex> lock(g_running_details_mutex);
-                g_running_job_details.erase(filename);
+                std::lock_guard<std::mutex> lock(m_state.running_details_mutex);
+                m_state.running_job_details.erase(filename);
             }
 
             uint32_t resp_fail_type = htonl(PACKET_COMPILE_RESP);
@@ -258,15 +221,15 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         socket_t worker_sock = best_worker->socket;
         std::string worker_ip = best_worker->ip;
 
-        g_state.mutex.lock();
+        m_state.mutex.lock();
         ActiveJob aj{ filename, worker_ip, std::chrono::steady_clock::now() };
-        g_state.active_jobs.push_back(aj);
-        g_state.mutex.unlock();
+        m_state.active_jobs.push_back(aj);
+        m_state.mutex.unlock();
 
         auto res = std::make_shared<CompileResult>();
         {
-            std::lock_guard<std::mutex> lock(g_results_mutex);
-            g_compile_results[filename] = res;
+            std::lock_guard<std::mutex> lock(m_state.results_mutex);
+            m_state.compile_results[filename] = res;
         }
 
         bool send_ok = false;
@@ -285,20 +248,20 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         }
 
         if (!send_ok) {
-            g_state.mutex.lock();
-            g_state.pending_compilations.erase(hash);
-            for (auto it = g_state.active_jobs.begin(); it != g_state.active_jobs.end(); ++it) {
-                if (it->filename == filename) { g_state.active_jobs.erase(it); break; }
+            m_state.mutex.lock();
+            m_state.pending_compilations.erase(hash);
+            for (auto it = m_state.active_jobs.begin(); it != m_state.active_jobs.end(); ++it) {
+                if (it->filename == filename) { m_state.active_jobs.erase(it); break; }
             }
-            g_state.mutex.unlock();
+            m_state.mutex.unlock();
 
             {
-                std::lock_guard<std::mutex> res_lock(g_results_mutex);
-                g_compile_results.erase(filename);
+                std::lock_guard<std::mutex> res_lock(m_state.results_mutex);
+                m_state.compile_results.erase(filename);
             }
             {
-                std::lock_guard<std::mutex> lock(g_running_details_mutex);
-                g_running_job_details.erase(filename);
+                std::lock_guard<std::mutex> lock(m_state.running_details_mutex);
+                m_state.running_job_details.erase(filename);
             }
 
             uint32_t resp_fail_type = htonl(PACKET_COMPILE_RESP);
@@ -322,16 +285,16 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         res_lock.unlock();
 
         {
-            std::lock_guard<std::mutex> map_lock(g_results_mutex);
-            g_compile_results.erase(filename);
+            std::lock_guard<std::mutex> map_lock(m_state.results_mutex);
+            m_state.compile_results.erase(filename);
         }
         {
-            std::lock_guard<std::mutex> lock(g_running_details_mutex);
-            g_running_job_details.erase(filename);
+            std::lock_guard<std::mutex> lock(m_state.running_details_mutex);
+            m_state.running_job_details.erase(filename);
         }
 
-        if (exit_code == 0 && !bin_data.empty() && g_cache) {
-            g_cache->put(hash, bin_data, log_str, filename, command);
+        if (exit_code == 0 && !bin_data.empty() && m_cache) {
+            m_cache->put(hash, bin_data, log_str, filename, command);
         }
 
         // Slots freigeben
@@ -343,18 +306,18 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
             }
         }
 
-        g_state.mutex.lock();
-        for (auto it = g_state.active_jobs.begin(); it != g_state.active_jobs.end(); ++it) {
+        m_state.mutex.lock();
+        for (auto it = m_state.active_jobs.begin(); it != m_state.active_jobs.end(); ++it) {
             if (it->filename == filename) {
-                g_state.active_jobs.erase(it);
+                m_state.active_jobs.erase(it);
                 break;
             }
         }
 
         RecentJob rj{ filename, exit_code, false };
-        g_state.recent_jobs.push_back(rj);
-        if (g_state.recent_jobs.size() > 20) {
-            g_state.recent_jobs.erase(g_state.recent_jobs.begin());
+        m_state.recent_jobs.push_back(rj);
+        if (m_state.recent_jobs.size() > 20) {
+            m_state.recent_jobs.erase(m_state.recent_jobs.begin());
         }
 
         int32_t exit_code_net = htonl(exit_code);
@@ -370,9 +333,9 @@ void ClientHandler::handle_client_connection(socket_t client_sock, const std::st
         if (!bin_data.empty()) send_all(client_sock, bin_data.data(), bin_data.size());
         close_socket(client_sock);
 
-        auto waiting_clients = g_state.pending_compilations[hash];
-        g_state.pending_compilations.erase(hash);
-        g_state.mutex.unlock();
+        auto waiting_clients = m_state.pending_compilations[hash];
+        m_state.pending_compilations.erase(hash);
+        m_state.mutex.unlock();
 
         // Benachrichtige wartende Clients
         for (auto s : waiting_clients) {

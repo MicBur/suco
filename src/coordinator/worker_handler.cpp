@@ -6,6 +6,7 @@
 #include <mutex>
 #include <cstring>
 #include <chrono>
+#include <thread>
 
 #ifndef _WIN32
 #include <sys/socket.h>
@@ -13,56 +14,30 @@
 #include <arpa/inet.h>
 #endif
 
-// Importiere temporär globale Variablen und Methoden aus main.cpp zur schrittweisen Migration
 namespace suco {
-
-struct RecentJob {
-    std::string filename;
-    int32_t exit_code;
-    bool cache_hit;
-};
-
-struct ActiveJob {
-    std::string filename;
-    std::string worker_ip;
-    std::chrono::steady_clock::time_point start_time;
-};
-
-struct CoordinatorState {
-    std::mutex mutex;
-    std::vector<std::shared_ptr<WorkerNode>> workers;
-    uint64_t total_requests;
-    uint64_t cache_hits;
-    uint64_t cache_misses;
-    std::unordered_map<std::string, std::vector<socket_t>> pending_compilations;
-    std::vector<ActiveJob> active_jobs;
-    std::vector<RecentJob> recent_jobs;
-};
-
-struct CompileResult {
-    bool ready;
-    int32_t exit_code;
-    std::string log;
-    std::vector<uint8_t> bin;
-    std::condition_variable cv;
-    std::mutex mutex;
-};
-
-extern CoordinatorState g_state;
-extern std::mutex g_results_mutex;
-extern std::unordered_map<std::string, std::shared_ptr<CompileResult>> g_compile_results;
-
-// Failover Handler in main.cpp deklariert
-extern void handle_worker_disconnect(const std::string& worker_ip);
 
 WorkerHandler::WorkerHandler(const CoordinatorConfig& config, 
                              WorkerManager& worker_manager, 
-                             JobQueue& job_queue)
+                             JobQueue& job_queue,
+                             SharedCoordinatorState& state,
+                             DisconnectHandler disconnect_handler)
     : m_config(config),
       m_worker_manager(worker_manager),
-      m_job_queue(job_queue) {}
+      m_job_queue(job_queue),
+      m_state(state),
+      m_disconnect_handler(disconnect_handler) {}
 
-void WorkerHandler::handle_worker_connection(socket_t worker_sock, const std::string& worker_ip) {
+static std::string get_socket_ip(socket_t sock) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sock, (struct sockaddr*)&addr, &addr_len) == 0) {
+        return inet_ntoa(addr.sin_addr);
+    }
+    return "unknown";
+}
+
+void WorkerHandler::handle_worker_connection(socket_t worker_sock) {
+    std::string worker_ip = get_socket_ip(worker_sock);
     // 1. Registrierungsdaten lesen
     uint32_t slots_total_net = 0;
     if (!read_all(worker_sock, &slots_total_net, 4)) {
@@ -116,12 +91,6 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock, const std::st
 
     m_worker_manager.register_worker(node);
 
-    // Temp compatibility registration in global state
-    {
-        std::lock_guard<std::mutex> lock(g_state.mutex);
-        g_state.workers.push_back(node);
-    }
-
     // 4. Multiplexing Loop für Heartbeats und Kompilierungs-Antworten
     while (true) {
         uint32_t packet_type_net = 0;
@@ -150,20 +119,6 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock, const std::st
 
             // Update in WorkerManager
             m_worker_manager.update_heartbeat(worker_sock, active_slots, total_slots, usage);
-
-            // Temp compatibility update in global state
-            {
-                std::lock_guard<std::mutex> lock(g_state.mutex);
-                for (auto& w : g_state.workers) {
-                    if (w->socket == worker_sock) {
-                        w->slots_used = active_slots;
-                        w->slots_total = total_slots;
-                        w->cpu_cores_usage = usage;
-                        w->last_heartbeat = std::chrono::steady_clock::now();
-                        break;
-                    }
-                }
-            }
         } 
         else if (type == PACKET_COMPILE_RESP) {
             uint32_t file_len_net = 0;
@@ -198,9 +153,9 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock, const std::st
 
             std::shared_ptr<CompileResult> res;
             {
-                std::lock_guard<std::mutex> lock(g_results_mutex);
-                auto it = g_compile_results.find(filename);
-                if (it != g_compile_results.end()) {
+                std::lock_guard<std::mutex> lock(m_state.results_mutex);
+                auto it = m_state.compile_results.find(filename);
+                if (it != m_state.compile_results.end()) {
                     res = it->second;
                 }
             }
@@ -221,24 +176,13 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock, const std::st
     
     // Deregister aus WorkerManager
     m_worker_manager.deregister_worker(worker_sock);
-
-    // Deregister aus globaler compatibility Liste
-    {
-        std::lock_guard<std::mutex> lock(g_state.mutex);
-        for (auto it = g_state.workers.begin(); it != g_state.workers.end(); ++it) {
-            if ((*it)->socket == worker_sock) {
-                ip_to_cleanup = (*it)->ip;
-                g_state.workers.erase(it);
-                break;
-            }
-        }
-    }
-
     close_socket(worker_sock);
 
-    // Triggere Rescheduling für getrennte Worker-IP
-    if (!ip_to_cleanup.empty()) {
-        std::thread(handle_worker_disconnect, ip_to_cleanup).detach();
+    // Triggere Rescheduling über Callback an den Coordinator
+    if (m_disconnect_handler && !ip_to_cleanup.empty()) {
+        std::thread([this, ip_to_cleanup]() {
+            m_disconnect_handler(ip_to_cleanup);
+        }).detach();
     }
 }
 

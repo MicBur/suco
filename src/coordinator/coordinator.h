@@ -7,13 +7,18 @@
 #include "worker_manager.h"
 #include "scheduler.h"
 #include "job_queue.h"
+#include "network_server.h"
+#include "client_handler.h"
+#include "worker_handler.h"
+#include "coordinator_types.h"
+#include "lru_cache.h"
 
 namespace suco {
 
 /**
  * @brief Der zentrale Orchestrator des SUCO Coordinators.
- * Verbindet die Teilmodule (Konfiguration, WorkerManager, Scheduler, JobQueue)
- * und steuert den Lebenszyklus der Netzwerk- und Überwachungsthreads.
+ * Verbindet die Teilmodule (Konfiguration, WorkerManager, Scheduler, JobQueue, NetworkServer)
+ * und steuert den Lebenszyklus des Cache, der Dashboard REST API und der Überwachungsthreads.
  */
 class Coordinator {
 public:
@@ -24,7 +29,7 @@ public:
     ~Coordinator();
 
     /**
-     * @brief Startet alle Hintergrund-Dienste und Netzwerk-Listener.
+     * @brief Startet alle Hintergrund-Dienste (TCP/UDP Netzwerk-Server, REST Web Server, Health Monitor).
      */
     void start();
 
@@ -40,23 +45,26 @@ public:
     void on_worker_disconnected(const std::string& worker_ip);
 
 private:
-    // Module
+    void run_health_monitor();
+    void run_web_server();
+
     CoordinatorConfig m_config;
+    std::unique_ptr<LruCache> m_cache;
+    SharedCoordinatorState m_state;
+
     WorkerManager m_worker_manager;
     Scheduler m_scheduler;
     JobQueue m_job_queue;
 
+    ClientHandler m_client_handler;
+    WorkerHandler m_worker_handler;
+    std::unique_ptr<NetworkServer> m_network_server;
+
     std::atomic<bool> m_running{false};
-
-    // Interne Threads
-    std::thread m_tcp_thread;
-    std::thread m_udp_thread;
     std::thread m_monitor_thread;
+    std::thread m_web_thread;
 
-    // Thread-Funktionen
-    void run_tcp_listener();
-    void run_udp_broadcast();
-    void run_health_monitor();
+    socket_t m_web_server_fd = INVALID_SOCKET_VAL;
 };
 
 } // namespace suco
