@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v1.1.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
-  <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B17-9b51e0?style=for-the-badge" alt="C++17"></a>
+  <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
   <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
 </p>
 
@@ -31,7 +31,8 @@ SUCO Lite ist eine **hochperformante, leichtgewichtige Alternative** zu teuren p
 - 🔍 **Zero-Config Auto-Discovery** – Worker finden den Coordinator automatisch per UDP Broadcast
 - 💾 **Intelligenter SSD-Cache** – SHA-256-basierter LRU-Cache mit Metadaten-Tracking
 - 📊 **Live Web-Dashboard** – Echtzeit-Monitoring aller Worker, CPU-Kerne und Jobs
-- 🛡️ **Resilienter Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
+- 🛡️ **Transparentes Grid-Failover** – Bricht ein Worker weg, delegiert der Coordinator die Jobs sofort neu
+- ↩️ **Resilienter Client-Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
 - 🖥️ **Cross-Platform** – Native Unterstützung für Windows (MSVC) und Linux (GCC/Clang)
 
 ---
@@ -45,17 +46,18 @@ SUCO Lite ist eine **hochperformante, leichtgewichtige Alternative** zu teuren p
 | **Cache Miss** | 25,5s | Preprocessierung → Verteilung → Kompilierung → Rücktransfer | – |
 | **Cache Hit** | 0,7s | Preprocessierung → SHA-256 Lookup → Sofortige Rückgabe aus SSD | **97,1%** 🚀 |
 
-### Distributed Grid Benchmark (30 Dateien × 800 Funktionen)
+### Distributed Grid Benchmark (500 Klassen / 10 Slots)
 
-> Getestet auf einem Grid mit **3× HP EliteDesk 800 G2 Mini** (je 4 Kerne, 12 Slots gesamt)
+> Getestet im Grid mit **3× HP EliteDesk Mini Nodes** (insgesamt 10 Slots)
 
-| Durchlauf | Dauer | Beschreibung | Gewinn |
+| Durchlauf | Dauer | Beschreibung / Performance | Gewinn |
 |:---|:---|:---|:---|
-| **Run 1 – Cache Miss** | 55,5s | 30 Dateien parallel auf 12 Slots verteilt | – |
-| **Run 2 – Cache Hit** | 1,3s | Alle 30 Dateien sofort aus dem SSD-Cache | **97,6%** 🚀 |
+| **Run 1 – Native Build** | 7,61s | Lokaler nativer Compiler-Lauf (No SUCO) | – |
+| **Run 2 – Cache Miss (Grid)** | 2,01s | **3.78x Beschleunigung** durch automatische Grid-Verteilung | **73.6%** 🚀 |
+| **Run 3 – Cache Hit (Grid)** | 1,52s | **5.00x Beschleunigung (80% Zeitersparnis)** aus Coordinator-Cache | **80.0%** 🚀 |
 
 <p align="center">
-  <strong>42× schneller beim zweiten Build. 30 Dateien in 1,3 Sekunden.</strong>
+  <strong>5× schneller durch Grid-Caching. 500 Klassen in 1,5 Sekunden.</strong>
 </p>
 
 ### Warum ist der Cache so schnell?
@@ -84,7 +86,7 @@ Der Client führt **nur die Preprocessierung** (Phase 1) lokal aus und berechnet
   <img src="assets/architecture.png" alt="SUCO Architektur" width="80%">
 </p>
 
-SUCO besteht aus drei nativen C++17-Komponenten:
+SUCO besteht aus drei nativen C++20-Komponenten:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -189,7 +191,7 @@ Der Installer kopiert die Binaries nach `/usr/local/bin/`, richtet systemd-Servi
 
 ```bash
 # Linux (GCC)
-suco g++ -O3 -std=c++17 -c myfile.cpp -o myfile.o
+suco g++ -O3 -std=c++20 -c myfile.cpp -o myfile.o
 
 # Windows (MSVC)
 suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj

@@ -31,17 +31,31 @@ int SucoClient::run(const CompilerCommand& command) {
     SUCO_LOG_INFO("Running local preprocessor for {}", cmd.source_file);
     std::vector<std::string> pp_args;
     pp_args.push_back(cmd.compiler_path);
+    
     if (cmd.is_msvc) {
         pp_args.push_back("/E");
         pp_args.push_back("/nologo");
-        for (const auto& flag : cmd.other_flags) {
+    } else {
+        pp_args.push_back("-E");
+    }
+
+    // Pass defines and include paths to the preprocessor
+    for (const auto& d : cmd.defines) {
+        pp_args.push_back(d);
+    }
+    for (const auto& i : cmd.include_paths) {
+        pp_args.push_back(i);
+    }
+    if (!cmd.language_standard.empty()) {
+        pp_args.push_back(cmd.language_standard);
+    }
+
+    for (const auto& flag : cmd.other_flags) {
+        if (cmd.is_msvc) {
             if (flag != "/nologo" && !flag.starts_with("/F")) {
                 pp_args.push_back(flag);
             }
-        }
-    } else {
-        pp_args.push_back("-E");
-        for (const auto& flag : cmd.other_flags) {
+        } else {
             pp_args.push_back(flag);
         }
     }

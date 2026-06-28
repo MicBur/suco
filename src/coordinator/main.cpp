@@ -92,6 +92,17 @@ struct CoordinatorState {
     std::vector<RecentJob> recent_jobs;
 };
 
+struct RunningJobDetail {
+    std::string hash;
+    std::string command;
+    std::string source;
+    socket_t client_sock;
+};
+
+std::mutex g_running_details_mutex;
+std::unordered_map<std::string, RunningJobDetail> g_running_job_details;
+
+int get_best_worker_index();
 
 CoordinatorState g_state;
 LruCache* g_cache = nullptr;
@@ -134,6 +145,114 @@ void run_udp_broadcast(uint16_t tcp_port) {
     close_socket(sock);
 }
 
+void handle_worker_disconnect(const std::string& worker_ip) {
+    std::vector<std::string> jobs_to_reschedule;
+    {
+        std::lock_guard<std::mutex> lock(g_state.mutex);
+        for (auto it = g_state.active_jobs.begin(); it != g_state.active_jobs.end();) {
+            if (it->worker_ip == worker_ip) {
+                std::cout << "suco-coordinator: Detected running job " << it->filename 
+                          << " on disconnected worker " << worker_ip << ". Rescheduling..." << std::endl;
+                jobs_to_reschedule.push_back(it->filename);
+                it = g_state.active_jobs.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    for (const auto& filename : jobs_to_reschedule) {
+        RunningJobDetail details;
+        bool found = false;
+        {
+            std::lock_guard<std::mutex> lock(g_running_details_mutex);
+            auto it = g_running_job_details.find(filename);
+            if (it != g_running_job_details.end()) {
+                details = it->second;
+                found = true;
+            }
+        }
+
+        if (!found) continue;
+
+        g_state.mutex.lock();
+        int worker_idx = get_best_worker_index();
+        if (worker_idx < 0) {
+            g_state.mutex.unlock();
+            std::cerr << "suco-coordinator error: No other worker available to reschedule " << filename << std::endl;
+            
+            std::shared_ptr<CompileResult> res;
+            {
+                std::lock_guard<std::mutex> res_lock(g_results_mutex);
+                auto it = g_compile_results.find(filename);
+                if (it != g_compile_results.end()) res = it->second;
+            }
+            if (res) {
+                std::lock_guard<std::mutex> l(res->mutex);
+                res->exit_code = -1;
+                res->log = "suco-coordinator error: Worker died and no other workers available in grid.";
+                res->ready = true;
+                res->cv.notify_all();
+            }
+            continue;
+        }
+
+        auto new_worker = g_state.workers[worker_idx];
+        new_worker->slots_used++;
+        std::string new_worker_ip = new_worker->ip;
+        
+        ActiveJob new_job{ filename, new_worker_ip, std::chrono::steady_clock::now() };
+        g_state.active_jobs.push_back(new_job);
+        g_state.mutex.unlock();
+
+        std::cout << "suco-coordinator: Rescheduling job " << filename << " to worker " 
+                  << new_worker->name << " (" << new_worker_ip << ")" << std::endl;
+
+        std::thread([new_worker, filename, details]() {
+            std::lock_guard<std::mutex> lock(new_worker->write_mutex);
+            uint32_t w_req_type = htonl(suco::PACKET_COMPILE_REQ);
+            uint32_t cmd_len_net = htonl(static_cast<u_long>(details.command.size()));
+            uint32_t file_len_net = htonl(static_cast<u_long>(filename.size()));
+            uint32_t src_len_net = htonl(static_cast<u_long>(details.source.size()));
+
+            bool ok = suco::send_all(new_worker->socket, &w_req_type, 4) &&
+                      suco::send_all(new_worker->socket, &cmd_len_net, 4) &&
+                      suco::send_all(new_worker->socket, details.command.c_str(), details.command.size()) &&
+                      suco::send_all(new_worker->socket, &file_len_net, 4) &&
+                      suco::send_all(new_worker->socket, filename.c_str(), filename.size()) &&
+                      suco::send_all(new_worker->socket, &src_len_net, 4) &&
+                      suco::send_all(new_worker->socket, details.source.c_str(), details.source.size());
+
+            if (!ok) {
+                std::cerr << "suco-coordinator error: Failed to send rescheduled job " << filename << " to worker " << new_worker->name << std::endl;
+                g_state.mutex.lock();
+                new_worker->slots_used = std::max(0, new_worker->slots_used - 1);
+                for (auto it = g_state.active_jobs.begin(); it != g_state.active_jobs.end(); ++it) {
+                    if (it->filename == filename) {
+                        g_state.active_jobs.erase(it);
+                        break;
+                    }
+                }
+                g_state.mutex.unlock();
+
+                std::shared_ptr<CompileResult> res;
+                {
+                    std::lock_guard<std::mutex> res_lock(g_results_mutex);
+                    auto it = g_compile_results.find(filename);
+                    if (it != g_compile_results.end()) res = it->second;
+                }
+                if (res) {
+                    std::lock_guard<std::mutex> l(res->mutex);
+                    res->exit_code = -1;
+                    res->log = "suco-coordinator error: Failed to send rescheduled job to new worker.";
+                    res->ready = true;
+                    res->cv.notify_all();
+                }
+            }
+        }).detach();
+    }
+}
+
 // Background thread to monitor Worker health. Removes inactive nodes.
 void run_worker_monitor() {
     while (true) {
@@ -146,8 +265,12 @@ void run_worker_monitor() {
             if (elapsed > 12) {
                 std::cout << "suco-coordinator: Worker " << (*it)->name << " (" << (*it)->ip 
                           << ") disconnected (heartbeat timeout)." << std::endl;
+                std::string ip_to_cleanup = (*it)->ip;
                 close_socket((*it)->socket);
                 it = g_state.workers.erase(it);
+                
+                // Triggere Rescheduling für getrennte Worker-IP
+                std::thread(handle_worker_disconnect, ip_to_cleanup).detach();
             } else {
                 ++it;
             }
@@ -488,11 +611,22 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         suco::read_all(client_sock, src_buf.data(), src_len);
         std::string source(src_buf.data(), src_len);
 
+        // Registriere Job-Details für eventuelles Failover/Rescheduling
+        {
+            std::lock_guard<std::mutex> lock(g_running_details_mutex);
+            g_running_job_details[filename] = RunningJobDetail{ hash, command, source, client_sock };
+        }
+
         g_state.mutex.lock();
         int worker_idx = get_best_worker_index();
         if (worker_idx < 0) {
             g_state.pending_compilations.erase(hash);
             g_state.mutex.unlock();
+
+            {
+                std::lock_guard<std::mutex> lock(g_running_details_mutex);
+                g_running_job_details.erase(filename);
+            }
 
             uint32_t resp_fail_type = htonl(suco::PACKET_COMPILE_RESP);
             int32_t exit_code = htonl(-1);
@@ -546,6 +680,10 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
                 std::lock_guard<std::mutex> res_lock(g_results_mutex);
                 g_compile_results.erase(filename);
             }
+            {
+                std::lock_guard<std::mutex> lock(g_running_details_mutex);
+                g_running_job_details.erase(filename);
+            }
 
             uint32_t resp_fail_type = htonl(suco::PACKET_COMPILE_RESP);
             int32_t exit_code = htonl(-1);
@@ -564,10 +702,15 @@ void handle_client_connection(socket_t client_sock, std::string client_ip) {
         int32_t exit_code = res->exit_code;
         std::string log_str = res->log;
         std::vector<uint8_t> bin_data = res->bin;
+        res_lock.unlock();
 
         {
             std::lock_guard<std::mutex> map_lock(g_results_mutex);
             g_compile_results.erase(filename);
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_running_details_mutex);
+            g_running_job_details.erase(filename);
         }
 
         if (exit_code == 0 && !bin_data.empty()) {
@@ -766,7 +909,11 @@ void handle_worker_connection(socket_t worker_sock, std::string worker_ip) {
         for (auto it = g_state.workers.begin(); it != g_state.workers.end(); ++it) {
             if ((*it)->socket == worker_sock) {
                 std::cout << "suco-coordinator: Worker offline: " << (*it)->name << " (" << (*it)->ip << ")" << std::endl;
+                std::string ip_to_cleanup = (*it)->ip;
                 g_state.workers.erase(it);
+                
+                // Triggere Rescheduling für getrennte Worker-IP
+                std::thread(handle_worker_disconnect, ip_to_cleanup).detach();
                 break;
             }
         }
