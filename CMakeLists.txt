@@ -46,6 +46,7 @@ add_executable(suco-coordinator
     src/coordinator/config.cpp
     src/coordinator/worker_manager.cpp
     src/coordinator/scheduler.cpp
+    src/coordinator/job_queue.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco-coordinator
