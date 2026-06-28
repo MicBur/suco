@@ -43,6 +43,7 @@ target_link_libraries(suco
 # Coordinator: suco-coordinator
 add_executable(suco-coordinator
     src/coordinator/main.cpp
+    src/coordinator/config.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco-coordinator
