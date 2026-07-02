@@ -12,6 +12,7 @@
 #include <functional>
 #include <thread>
 #include <cctype>
+#include <fstream>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -700,6 +701,282 @@ public:
     }
 };
 
+// Subcommand: suco install
+class InstallCommand : public Subcommand {
+private:
+    static std::string to_upper(std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+        return s;
+    }
+
+    static std::string trim_string(std::string s) {
+        s.erase(0, s.find_first_not_of(" \t\r\n"));
+        s.erase(s.find_last_not_of(" \t\r\n") + 1);
+        return s;
+    }
+
+    static std::string prompt(const std::string& question, const std::string& default_val) {
+        std::cout << question << " [" << default_val << "]: ";
+        std::string input;
+        std::getline(std::cin, input);
+        input = trim_string(input);
+        if (input.empty()) {
+            return default_val;
+        }
+        return input;
+    }
+
+    static std::string get_user_home() {
+#ifdef _WIN32
+        const char* profile = std::getenv("USERPROFILE");
+        return profile ? std::string(profile) : ".";
+#else
+        const char* sudo_user = std::getenv("SUDO_USER");
+        if (sudo_user) {
+            const char* home = std::getenv("HOME");
+            if (home && std::string(home) != "/root") {
+                return home;
+            }
+            return "/home/" + std::string(sudo_user);
+        }
+        const char* home = std::getenv("HOME");
+        return home ? std::string(home) : "/root";
+#endif
+    }
+
+    static bool is_root() {
+#ifdef _WIN32
+        return true;
+#else
+        return getuid() == 0;
+#endif
+    }
+
+    static bool copy_executable(const std::filesystem::path& src, const std::filesystem::path& dest, bool overwrite) {
+        try {
+            if (std::filesystem::exists(dest) && !overwrite) {
+                return true;
+            }
+            std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing);
+#ifndef _WIN32
+            std::filesystem::permissions(dest, 
+                std::filesystem::perms::owner_all | 
+                std::filesystem::perms::group_read | std::filesystem::perms::group_exec | 
+                std::filesystem::perms::others_read | std::filesystem::perms::others_exec
+            );
+#endif
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "[FEHLER] Kopieren von " << src.filename() << " fehlgeschlagen: " << e.what() << "\n";
+            return false;
+        }
+    }
+
+public:
+    std::string name() const override { return "install"; }
+    std::string description() const override { return "Installiert SUCO systemweit und konfiguriert optional Systemd-Dienste"; }
+
+    int execute(int argc, char** argv, const std::string& bin_dir) override {
+#ifdef _WIN32
+        std::cout << "suco install ist aktuell nur auf Linux-Systemen verfuegbar.\n"
+                  << "Bitte verwende die install.ps1 fuer die Installation unter Windows.\n";
+        return 0;
+#else
+        bool root_access = is_root();
+        if (!root_access) {
+            std::cout << "\n=================================================================\n";
+            std::cout << "⚠️  WARNUNG: Keine Root-Rechte (sudo) erkannt!\n";
+            std::cout << "SUCO kann nicht systemweit nach /usr/local/bin kopiert werden und\n";
+            std::cout << "Systemd-Dienste koennen nicht direkt geschrieben werden.\n";
+            std::cout << "Bitte starte die Installation mit: sudo suco install\n";
+            std::cout << "=================================================================\n\n";
+        }
+
+        std::string target_dir_default = root_access ? "/usr/local/bin" : "/tmp/suco-bin";
+        std::string target_dir = prompt("Zielverzeichnis fuer die Binaries", target_dir_default);
+
+        std::filesystem::path p_suco = std::filesystem::path(target_dir) / "suco";
+        std::filesystem::path p_cl = std::filesystem::path(target_dir) / "suco-cl";
+        std::filesystem::path p_cxx = std::filesystem::path(target_dir) / "suco-cl++";
+        
+        bool existing_found = std::filesystem::exists(p_suco) || 
+                               std::filesystem::exists(p_cl) || 
+                               std::filesystem::exists(p_cxx);
+
+        bool overwrite = true;
+        if (existing_found) {
+            std::cout << "\nEine bestehende Installation wurde im Zielverzeichnis erkannt:\n"
+                      << "  " << target_dir << "\n\n";
+            std::string ans = prompt("Moechtest du die bestehenden Binaries ueberschreiben? (J/n)", "J");
+            ans = to_upper(trim_string(ans));
+            if (ans != "J" && ans != "JA" && ans != "Y" && ans != "YES") {
+                overwrite = false;
+                std::cout << "[INFO] Bestehende Binaries werden beibehalten.\n";
+            }
+        }
+
+        std::string start_coord = prompt("suco-coordinator als Systemd-Dienst einrichten? (j/N)", "N");
+        start_coord = to_upper(trim_string(start_coord));
+        bool setup_coordinator = (start_coord == "J" || start_coord == "JA" || start_coord == "Y");
+
+        std::string start_worker = prompt("suco-worker als Systemd-Dienst einrichten? (j/N)", "N");
+        start_worker = to_upper(trim_string(start_worker));
+        bool setup_worker = (start_worker == "J" || start_worker == "JA" || start_worker == "Y");
+
+        int worker_slots = 4;
+        if (setup_worker) {
+            unsigned int cores = std::thread::hardware_concurrency();
+            std::string slots_default = cores > 0 ? std::to_string(cores) : "4";
+            while (true) {
+                std::string slots_str = prompt("Anzahl Slots fuer den Worker-Dienst", slots_default);
+                try {
+                    int s = std::stoi(slots_str);
+                    if (s > 0 && s <= 128) {
+                        worker_slots = s;
+                        break;
+                    }
+                } catch (...) {}
+                std::cout << "Ungueltige Slot-Anzahl. Bitte eine Zahl zwischen 1 und 128 eingeben.\n";
+            }
+        }
+
+        std::cout << "\nStarte Installationsvorgang...\n";
+
+        try {
+            std::filesystem::create_directories(target_dir);
+            if (root_access) {
+                std::filesystem::create_directories("/etc/suco");
+            }
+            std::string user_home = get_user_home();
+            std::filesystem::create_directories(user_home + "/.suco");
+            std::cout << "[ERFOLG] Verzeichnisse erstellt.\n";
+        } catch (const std::exception& e) {
+            std::cerr << "[FEHLER] Fehler beim Erstellen der Verzeichnisse: " << e.what() << "\n";
+            if (!root_access) {
+                std::cerr << "[TIPP] Bitte starte den Befehl mit 'sudo' fuer Schreibrechte im System.\n";
+            }
+            return 1;
+        }
+
+        std::filesystem::path src_dir(bin_dir);
+        bool copy_ok = true;
+        copy_ok &= copy_executable(src_dir / "suco", p_suco, overwrite);
+        copy_ok &= copy_executable(src_dir / "suco-cl", p_cl, overwrite);
+        copy_ok &= copy_executable(src_dir / "suco-cl++", p_cxx, overwrite);
+
+        std::filesystem::path p_coord = std::filesystem::path(target_dir) / "suco-coordinator";
+        std::filesystem::path p_work = std::filesystem::path(target_dir) / "suco-worker";
+        
+        if (std::filesystem::exists(src_dir / "suco-coordinator")) {
+            copy_ok &= copy_executable(src_dir / "suco-coordinator", p_coord, overwrite);
+        }
+        if (std::filesystem::exists(src_dir / "suco-worker")) {
+            copy_ok &= copy_executable(src_dir / "suco-worker", p_work, overwrite);
+        }
+
+        if (!copy_ok) {
+            std::cerr << "[FEHLER] Installation der Binaries unvollstaendig.\n";
+            return 1;
+        }
+        std::cout << "[ERFOLG] Binaries erfolgreich kopiert nach: " << target_dir << "\n";
+
+        std::string coord_service = 
+            "[Unit]\n"
+            "Description=SUCO Compiler Grid Coordinator\n"
+            "After=network.target\n\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "User=root\n"
+            "WorkingDirectory=/etc/suco\n"
+            "ExecStart=" + p_coord.string() + "\n"
+            "Restart=on-failure\n"
+            "RestartSec=5\n\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n";
+
+        std::string worker_service = 
+            "[Unit]\n"
+            "Description=SUCO Compiler Grid Worker\n"
+            "After=network.target\n\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "User=root\n"
+            "WorkingDirectory=/etc/suco\n"
+            "ExecStart=" + p_work.string() + " --slots " + std::to_string(worker_slots) + "\n"
+            "Restart=on-failure\n"
+            "RestartSec=5\n\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n";
+
+        if (setup_coordinator) {
+            if (root_access) {
+                std::string path = "/etc/systemd/system/suco-coordinator.service";
+                std::ofstream out(path);
+                if (out.is_open()) {
+                    out << coord_service;
+                    std::cout << "[ERFOLG] Systemd-Service geschrieben nach: " << path << "\n";
+                } else {
+                    std::cerr << "[FEHLER] Konnte Dienstdatei nicht schreiben: " << path << "\n";
+                }
+            } else {
+                std::cout << "\n=== GENERIERTER INHALT FUER: /etc/systemd/system/suco-coordinator.service ===\n"
+                          << coord_service
+                          << "=============================================================================\n";
+            }
+        }
+
+        if (setup_worker) {
+            if (root_access) {
+                std::string path = "/etc/systemd/system/suco-worker.service";
+                std::ofstream out(path);
+                if (out.is_open()) {
+                    out << worker_service;
+                    std::cout << "[ERFOLG] Systemd-Service geschrieben nach: " << path << "\n";
+                } else {
+                    std::cerr << "[FEHLER] Konnte Dienstdatei nicht schreiben: " << path << "\n";
+                }
+            } else {
+                std::cout << "\n=== GENERIERTER INHALT FUER: /etc/systemd/system/suco-worker.service ===\n"
+                          << worker_service
+                          << "=========================================================================\n";
+            }
+        }
+
+        std::cout << "\n=================================================================\n";
+        std::cout << "                 INSTALLATION ERFOLGREICH BEENDET                \n";
+        std::cout << "=================================================================\n";
+        std::cout << "Binaries installiert unter:  " << target_dir << "\n";
+        std::cout << "Systemweites Config-Dir:     /etc/suco\n";
+        std::cout << "Nutzerspezifisches Daten-Dir: " << get_user_home() << "/.suco\n";
+        
+        if (setup_coordinator || setup_worker) {
+            std::cout << "\nBefehle zur Aktivierung der Systemd-Dienste:\n";
+            if (root_access) {
+                std::cout << "  sudo systemctl daemon-reload\n";
+                if (setup_coordinator) {
+                    std::cout << "  sudo systemctl enable suco-coordinator.service --now\n";
+                }
+                if (setup_worker) {
+                    std::cout << "  sudo systemctl enable suco-worker.service --now\n";
+                }
+            } else {
+                std::cout << "  1. Erstelle die Dienstdateien unter /etc/systemd/system/ mit obigem Inhalt.\n";
+                std::cout << "  2. Führe aus: sudo systemctl daemon-reload\n";
+                if (setup_coordinator) {
+                    std::cout << "  3. Führe aus: sudo systemctl enable suco-coordinator.service --now\n";
+                }
+                if (setup_worker) {
+                    std::cout << "  3. Führe aus: sudo systemctl enable suco-worker.service --now\n";
+                }
+            }
+        }
+        std::cout << "=================================================================\n";
+
+        return 0;
+#endif
+    }
+};
+
 int main(int argc, char* argv[]) {
     // Registrierung der Subkommandos initialisieren
     auto& registry = SubcommandRegistry::instance();
@@ -709,6 +986,7 @@ int main(int argc, char* argv[]) {
     registry.register_command(std::make_unique<WorkersCommand>());
     registry.register_command(std::make_unique<ConfigCommand>());
     registry.register_command(std::make_unique<SetupCommand>());
+    registry.register_command(std::make_unique<InstallCommand>());
 
     std::string bin_dir = get_binary_directory(argv[0]);
 
