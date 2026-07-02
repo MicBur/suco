@@ -60,6 +60,17 @@ SUCO Lite ist eine **hochperformante, leichtgewichtige Alternative** zu teuren p
   <strong>5× schneller durch Grid-Caching. 500 Klassen in 1,5 Sekunden.</strong>
 </p>
 
+### Qt6 C++ GUI Benchmark (MOC + Qt Widgets)
+
+> Getestet mit einem Qt6-Projekt (inkl. `moc` Meta-Object-Compiler Generierung und statischen MOC-Predefs)
+
+| Durchlauf | Dauer | Beschreibung / Performance | Gewinn |
+|:---|:---|:---|:---|
+| **Run 1 – Cache Miss (Grid)** | 4,79s | Lokale Präprozessierung + remote GCC-16 Grid-Kompilierung | – |
+| **Run 2 – Cache Hit (Warm)** | 3,43s | **28% Zeitersparnis** bei 4/5 Cache-Hits (MOC + Core Caching) | **28.4%** 🚀 |
+
+*Hinweis:* Bei kleineren Projekten machen das lokale Ausführen des Qt-Meta-Object-Compilers (`moc`) und das finale Linken der großen Qt6-Shared-Bibliotheken den Hauptteil der Systemzeit aus. Dennoch beschleunigt SUCO das Caching der generierten MOC-Kompilate spürbar.
+
 ### Warum ist der Cache so schnell?
 
 ```
