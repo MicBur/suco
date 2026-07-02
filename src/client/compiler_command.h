@@ -23,6 +23,9 @@ struct CompilerCommand {
 
     bool is_msvc = false;
     bool is_precompiled_header = false;
+    bool is_pch_creation = false;
+    bool is_pch_usage = false;
+    std::string pch_file;
     bool is_monitor_request = false;
 
     std::vector<std::string> raw_args; // Holds the arguments for fallback execution

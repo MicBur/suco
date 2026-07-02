@@ -15,13 +15,17 @@ SucoClient::SucoClient(ClientConfig config)
 int SucoClient::run(const CompilerCommand& command) {
     // 1. Verify if this command is a standard compilation invocation (-c)
     if (!command.is_compilation_step()) {
+        return LocalCompiler::execute_direct(command.raw_args);
+    }
+
+    // 2. Fall back locally if PCH creation is active
+    if (command.is_pch_creation) {
+        SUCO_LOG_INFO("PCH creation detected. Falling back to local compilation.");
         return run_local_fallback(command);
     }
 
-    // 2. Fall back locally if precompiled headers (PCH) are active (not cached in Phase 1)
-    if (command.is_precompiled_header) {
-        SUCO_LOG_INFO("Precompiled headers (PCH) detected. Falling back to local compilation.");
-        return run_local_fallback(command);
+    if (command.is_pch_usage) {
+        SUCO_LOG_INFO("PCH usage detected. Preparing remote compilation with PCH...");
     }
 
     // Make a mutable copy of the command to populate preprocessed sources and hashes
@@ -92,19 +96,42 @@ int SucoClient::run(const CompilerCommand& command) {
     }
 
     // 6. Check the distributed cache via the coordinator (fastest path)
-    CompileResult result;
-    if (try_cache_hit(cmd, result)) {
-        if (result.save_to(cmd.output_file)) {
-            if (!result.log.empty()) {
-                std::cerr.write(result.log.data(), static_cast<std::streamsize>(result.log.size()));
+    CacheResult cache_res = network_.try_get_from_cache(cmd);
+    if (cache_res.hit) {
+        if (cache_res.save_to(cmd.output_file)) {
+            if (!cache_res.log.empty()) {
+                std::cerr.write(cache_res.log.data(), static_cast<std::streamsize>(cache_res.log.size()));
                 std::cerr << std::flush;
             }
             return 0; // Cache hit successfully applied
         }
         SUCO_LOG_ERROR("Failed to save cached binary output to {}", cmd.output_file);
+    } else if (cache_res.wait) {
+        // 6b. Wait for parallel compile of the same hash to finish
+        CompileResult wait_res = network_.wait_for_result();
+        if (wait_res.success) {
+            if (!wait_res.log.empty()) {
+                std::cerr.write(wait_res.log.data(), static_cast<std::streamsize>(wait_res.log.size()));
+                std::cerr << std::flush;
+            }
+            if (wait_res.exit_code == 0) {
+                if (wait_res.save_to(cmd.output_file)) {
+                    return 0;
+                }
+                SUCO_LOG_ERROR("Failed to save compiled binary output to {}", cmd.output_file);
+            } else if (wait_res.exit_code == -1) {
+                SUCO_LOG_WARNING("Parallel compilation returned -1 (grid busy or error). Falling back to local compilation.");
+                return run_local_fallback(cmd);
+            } else {
+                return wait_res.exit_code;
+            }
+        }
+        SUCO_LOG_WARNING("Wait for parallel compilation result failed. Falling back to local compilation.");
+        return run_local_fallback(cmd);
     }
 
     // 7. Request remote compilation on the grid via the coordinator (reusing socket)
+    CompileResult result;
     if (try_remote_compile(cmd, result)) {
         if (!result.log.empty()) {
             std::cerr.write(result.log.data(), static_cast<std::streamsize>(result.log.size()));
@@ -116,6 +143,9 @@ int SucoClient::run(const CompilerCommand& command) {
                 return 0; // Compilation succeeded, output stored
             }
             SUCO_LOG_ERROR("Failed to save compiled binary output to {}", cmd.output_file);
+        } else if (result.exit_code == -1) {
+            SUCO_LOG_WARNING("Grid compilation returned -1 (grid busy or error). Falling back to local compilation.");
+            return run_local_fallback(cmd);
         } else {
             return result.exit_code; // Grid compilation finished with compiler error
         }
@@ -124,22 +154,6 @@ int SucoClient::run(const CompilerCommand& command) {
     // 8. Fallback locally if grid communication fails
     SUCO_LOG_WARNING("Grid compilation failed or unavailable. Falling back to local compilation.");
     return run_local_fallback(cmd);
-}
-
-bool SucoClient::try_cache_hit(const CompilerCommand& cmd, CompileResult& out_result) {
-    if (!network_.is_available()) {
-        return false;
-    }
-
-    auto cache_res = network_.try_get_from_cache(cmd);
-    if (cache_res.hit) {
-        out_result.success = true;
-        out_result.exit_code = 0;
-        out_result.log = std::move(cache_res.log);
-        out_result.binary = std::move(cache_res.binary);
-        return true;
-    }
-    return false;
 }
 
 bool SucoClient::try_remote_compile(const CompilerCommand& cmd, CompileResult& out_result) {

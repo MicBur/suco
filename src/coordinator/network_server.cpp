@@ -1,5 +1,6 @@
 #include "network_server.h"
 #include "protocol.h"
+#include "logging.h"
 #include <iostream>
 #include <cstring>
 #include <chrono>
@@ -28,8 +29,7 @@ void NetworkServer::start() {
         return;
     }
 
-    std::cout << "suco-coordinator: NetworkServer starting on TCP Port " 
-              << m_config.get_coordinator_port() << "..." << std::endl;
+    SUCO_LOG_INFO("NetworkServer starting on TCP Port {}...", m_config.get_coordinator_port());
 
     // Starten des TCP-Listeners und UDP-Discovery-Broadcasters
     m_tcp_thread = std::thread(&NetworkServer::run_tcp_listener, this);
@@ -41,7 +41,7 @@ void NetworkServer::stop() {
         return;
     }
 
-    std::cout << "suco-coordinator: NetworkServer stopping..." << std::endl;
+    SUCO_LOG_INFO("NetworkServer stopping...");
 
     // Sockets schließen, um blockierende accept/sendto Aufrufe abzubrechen
     if (m_server_fd != INVALID_SOCKET_VAL) {
@@ -60,13 +60,13 @@ void NetworkServer::stop() {
         m_udp_thread.join();
     }
 
-    std::cout << "suco-coordinator: NetworkServer stopped." << std::endl;
+    SUCO_LOG_INFO("NetworkServer stopped.");
 }
 
 void NetworkServer::run_tcp_listener() {
     m_server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (m_server_fd == INVALID_SOCKET_VAL) {
-        std::cerr << "suco-coordinator: Failed to create TCP server socket." << std::endl;
+        SUCO_LOG_ERROR("Failed to create TCP server socket.");
         return;
     }
 
@@ -84,22 +84,20 @@ void NetworkServer::run_tcp_listener() {
     addr.sin_port = htons(m_config.get_coordinator_port());
 
     if (bind(m_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        std::cerr << "suco-coordinator: Bind failed on TCP Port " 
-                  << m_config.get_coordinator_port() << std::endl;
+        SUCO_LOG_ERROR("Bind failed on TCP Port {}", m_config.get_coordinator_port());
         close_socket(m_server_fd);
         m_server_fd = INVALID_SOCKET_VAL;
         return;
     }
 
     if (listen(m_server_fd, SOMAXCONN) < 0) {
-        std::cerr << "suco-coordinator: Listen failed." << std::endl;
+        SUCO_LOG_ERROR("Listen failed.");
         close_socket(m_server_fd);
         m_server_fd = INVALID_SOCKET_VAL;
         return;
     }
 
-    std::cout << "suco-coordinator: TCP server listening on Port " 
-              << m_config.get_coordinator_port() << std::endl;
+    SUCO_LOG_INFO("TCP server listening on Port {}", m_config.get_coordinator_port());
 
     while (m_running) {
         struct sockaddr_in client_addr;
@@ -141,7 +139,7 @@ void NetworkServer::run_tcp_listener() {
 void NetworkServer::run_udp_broadcast() {
     m_udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (m_udp_fd == INVALID_SOCKET_VAL) {
-        std::cerr << "suco-coordinator: Failed to create UDP socket." << std::endl;
+        SUCO_LOG_ERROR("Failed to create UDP socket.");
         return;
     }
 
@@ -160,8 +158,7 @@ void NetworkServer::run_udp_broadcast() {
     addr.sin_port = htons(suco::DEFAULT_UDP_PORT);
 
     std::string beacon = "SUCO_COORDINATOR_v1 " + std::to_string(m_config.get_coordinator_port());
-    std::cout << "suco-coordinator: UDP Auto-Discovery broadcast active on Port " 
-              << suco::DEFAULT_UDP_PORT << std::endl;
+    SUCO_LOG_INFO("UDP Auto-Discovery broadcast active on Port {}", suco::DEFAULT_UDP_PORT);
 
     while (m_running) {
 #ifdef _WIN32

@@ -1,6 +1,7 @@
 #include "network_client.h"
 #include "logging.h"
 #include "protocol.h"
+#include "utils.h"
 
 #include <fstream>
 #include <iostream>
@@ -121,7 +122,13 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd) {
     if (resp_type == suco::PACKET_CACHE_MISS) {
         SUCO_LOG_INFO("Cache miss for {}", cmd.source_file);
         // Keep socket connected for subsequent try_compile()
-        return CacheResult{ .hit = false };
+        return CacheResult{ .hit = false, .wait = false };
+    }
+
+    if (resp_type == suco::PACKET_CACHE_WAIT) {
+        SUCO_LOG_INFO("Cache query pending (waiting for parallel compile of {})", cmd.source_file);
+        // Keep socket connected for subsequent wait_for_result()
+        return CacheResult{ .hit = false, .wait = true };
     }
 
     SUCO_LOG_ERROR("Received unexpected protocol packet type: {}", resp_type);
@@ -139,7 +146,30 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
 
     // Reconstruct the compiler invocation command without local-only parameters
     std::string remote_cmd = cmd.compiler_path;
-    for (const auto& flag : cmd.other_flags) {
+    for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
+        const auto& flag = cmd.other_flags[f];
+        
+        // PCH-bezogene Flags für den remote Compiler filtern, 
+        // da der preprozessierte Quellcode bereits voll expandiert ist.
+        if (cmd.is_msvc) {
+            if (flag.rfind("/Yu", 0) == 0 || flag.rfind("-Yu", 0) == 0 ||
+                flag.rfind("/Fp", 0) == 0 || flag.rfind("-Fp", 0) == 0 ||
+                flag.rfind("/Yc", 0) == 0 || flag.rfind("-Yc", 0) == 0 ||
+                flag.rfind("/Y-", 0) == 0 || flag.rfind("-Y-", 0) == 0) {
+                continue;
+            }
+        } else {
+            if (flag == "-include-pch") {
+                f++; // Überspringe das nächste Flag (den PCH-Pfad)
+                continue;
+            }
+            if (flag.rfind("-fpch-preprocess", 0) == 0) {
+                continue;
+            }
+            if (ends_with(flag, ".gch") || ends_with(flag, ".pch")) {
+                continue;
+            }
+        }
         remote_cmd += " " + flag;
     }
     if (!cmd.language_standard.empty()) {
@@ -163,6 +193,20 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
         return CompileResult{ .success = false };
     }
 
+    return read_compile_response();
+}
+
+CompileResult NetworkClient::wait_for_result() {
+    if (!is_connected_) {
+        SUCO_LOG_ERROR("Remote compilation wait failed: No active connection to coordinator");
+        return CompileResult{ .success = false };
+    }
+
+    SUCO_LOG_INFO("Waiting for parallel compile result from coordinator...");
+    return read_compile_response();
+}
+
+CompileResult NetworkClient::read_compile_response() {
     uint32_t compile_resp_type_net = 0;
     if (!suco::read_all(sock_, &compile_resp_type_net, 4)) {
         SUCO_LOG_ERROR("Failed to read remote compile response type");

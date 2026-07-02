@@ -1,5 +1,6 @@
 #include "coordinator.h"
 #include "protocol.h"
+#include "logging.h"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -84,7 +85,7 @@ void Coordinator::start() {
         return; // Läuft bereits
     }
 
-    std::cout << "suco-coordinator: Orchestrator services starting..." << std::endl;
+    SUCO_LOG_INFO("Orchestrator services starting...");
     
     // 1. LRU Cache initialisieren (5 GB Limit)
     m_cache = std::make_unique<LruCache>(
@@ -107,7 +108,7 @@ void Coordinator::stop() {
         return; // Läuft nicht
     }
 
-    std::cout << "suco-coordinator: Orchestrator services stopping..." << std::endl;
+    SUCO_LOG_INFO("Orchestrator services stopping...");
 
     // 1. Web Server Socket schließen, um Thread zu entblocken
     if (m_web_server_fd != INVALID_SOCKET_VAL) {
@@ -129,17 +130,16 @@ void Coordinator::stop() {
     // 4. Cache freigeben
     m_cache.reset();
 
-    std::cout << "suco-coordinator: Orchestrator services stopped." << std::endl;
+    SUCO_LOG_INFO("Orchestrator services stopped.");
 }
 
 void Coordinator::on_worker_disconnected(const std::string& worker_ip) {
-    std::cout << "suco-coordinator: Orchestrating failover for crashed worker " << worker_ip << std::endl;
+    SUCO_LOG_WARNING("Orchestrating failover for crashed worker {}", worker_ip);
     
     // 1. Reschedulet alle aktiven Jobs des ausgefallenen Workers in die JobQueue
     auto rescheduled_jobs = m_job_queue.reschedule_worker_jobs(worker_ip);
     if (!rescheduled_jobs.empty()) {
-        std::cout << "suco-coordinator: Successfully rescheduled " << rescheduled_jobs.size() 
-                  << " jobs back to PENDING." << std::endl;
+        SUCO_LOG_INFO("Successfully rescheduled {} jobs back to PENDING.", rescheduled_jobs.size());
     }
 
     // 2. Bereinige aktive Jobs im geteilten Zustand
@@ -170,8 +170,7 @@ void Coordinator::on_worker_disconnected(const std::string& worker_ip) {
 
         if (found) {
             if (details.attempts >= 3) {
-                std::cerr << "suco-coordinator error: Job " << filename 
-                          << " reached max reschedule attempts (3). Aborting." << std::endl;
+                SUCO_LOG_ERROR("Job {} reached max reschedule attempts (3). Aborting.", filename);
                 
                 std::shared_ptr<CompileResult> res;
                 {
@@ -225,7 +224,7 @@ void Coordinator::run_web_server() {
     uint16_t port = DEFAULT_WEB_PORT;
     m_web_server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (m_web_server_fd == INVALID_SOCKET_VAL) {
-        std::cerr << "suco-coordinator error: Failed to create web socket." << std::endl;
+        SUCO_LOG_ERROR("Failed to create web socket.");
         return;
     }
 
@@ -243,7 +242,7 @@ void Coordinator::run_web_server() {
     address.sin_port = htons(port);
 
     if (bind(m_web_server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        std::cerr << "suco-coordinator error: Web server bind failed on Port " << port << std::endl;
+        SUCO_LOG_ERROR("Web server bind failed on Port {}", port);
         close_socket(m_web_server_fd);
         m_web_server_fd = INVALID_SOCKET_VAL;
         return;
@@ -255,7 +254,7 @@ void Coordinator::run_web_server() {
         return;
     }
 
-    std::cout << "suco-coordinator: Web dashboard REST API listening on Port " << port << std::endl;
+    SUCO_LOG_INFO("Web dashboard REST API listening on Port {}", port);
 
     while (m_running) {
         struct sockaddr_in client_addr;

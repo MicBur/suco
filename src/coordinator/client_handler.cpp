@@ -1,5 +1,6 @@
 #include "client_handler.h"
 #include "protocol.h"
+#include "logging.h"
 #include <iostream>
 #include <vector>
 #include <condition_variable>
@@ -79,8 +80,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
         }
 
         if (cache_found) {
-            std::cout << "suco-coordinator: Cache HIT for job " << query_filename 
-                      << " (hash: " << hash << ")" << std::endl;
+            SUCO_LOG_INFO("Cache HIT for job {} (hash: {})", query_filename, hash);
             {
                 std::lock_guard<std::mutex> lock(m_state.mutex);
                 m_state.total_requests++;
@@ -109,8 +109,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
             return;
         }
 
-        std::cout << "suco-coordinator: Cache MISS for job " << query_filename 
-                  << " (hash: " << hash << ")" << std::endl;
+        SUCO_LOG_INFO("Cache MISS for job {} (hash: {})", query_filename, hash);
 
         m_state.mutex.lock();
         auto it = m_state.pending_compilations.find(hash);
@@ -119,6 +118,9 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
             m_state.total_requests++;
             m_state.cache_misses++;
             m_state.mutex.unlock();
+            
+            uint32_t resp_type = htonl(PACKET_CACHE_WAIT);
+            send_all(client_sock, &resp_type, 4);
             return;
         }
 
@@ -220,6 +222,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
         best_worker->slots_used++;
         socket_t worker_sock = best_worker->socket;
         std::string worker_ip = best_worker->ip;
+        SUCO_LOG_INFO("Assigned job {} to worker {} (free slots before: {})", filename, worker_ip, best_worker->slots_total - best_worker->slots_used + 1);
 
         m_state.mutex.lock();
         ActiveJob aj{ filename, worker_ip, std::chrono::steady_clock::now() };

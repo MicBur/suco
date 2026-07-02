@@ -17,7 +17,8 @@ enum PacketType : uint32_t {
     PACKET_HEARTBEAT = 0x03,
     PACKET_CACHE_QUERY = 0x04,
     PACKET_CACHE_HIT = 0x05,
-    PACKET_CACHE_MISS = 0x06
+    PACKET_CACHE_MISS = 0x06,
+    PACKET_CACHE_WAIT = 0x07
 };
 
 /**
@@ -33,6 +34,7 @@ inline constexpr std::string_view to_string(PacketType type) noexcept {
         case PACKET_CACHE_QUERY:   return "CACHE_QUERY";
         case PACKET_CACHE_HIT:     return "CACHE_HIT";
         case PACKET_CACHE_MISS:    return "CACHE_MISS";
+        case PACKET_CACHE_WAIT:    return "CACHE_WAIT";
     }
     return "UNKNOWN";
 }

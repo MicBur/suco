@@ -15,6 +15,7 @@ namespace suco {
  */
 struct CacheResult {
     bool hit = false;
+    bool wait = false;
     std::vector<char> log;
     std::vector<uint8_t> binary;
 
@@ -92,7 +93,18 @@ public:
      */
     CompileResult try_compile(const CompilerCommand& cmd);
 
+    /**
+     * @brief Blockingly waits for a compilation result on the active connection.
+     * @return CompileResult containing remote status.
+     */
+    CompileResult wait_for_result();
+
 private:
+    /**
+     * @brief Common helper to read the compile response from the socket.
+     */
+    CompileResult read_compile_response();
+
     /**
      * @brief Attempts to connect to the coordinator TCP port with a strict timeout.
      */

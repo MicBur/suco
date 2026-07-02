@@ -1,5 +1,6 @@
 #include "worker_handler.h"
 #include "protocol.h"
+#include "logging.h"
 #include <iostream>
 #include <vector>
 #include <condition_variable>
@@ -64,8 +65,7 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock) {
     }
     std::string os_str(os_buf.data(), os_len);
 
-    std::cout << "suco-coordinator: Worker registered: " << name << " (" << worker_ip 
-              << ", OS: " << os_str << ", Cores: " << slots_total << ")" << std::endl;
+    SUCO_LOG_INFO("Worker registered: {} ({}, OS: {}, Cores: {})", name, worker_ip, os_str, slots_total);
 
     // 2. Socket-Empfangs-Timeout konfigurieren (für Heartbeat-Erkennung)
 #ifdef _WIN32
@@ -119,6 +119,7 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock) {
 
             // Update in WorkerManager
             m_worker_manager.update_heartbeat(worker_sock, active_slots, total_slots, usage);
+            SUCO_LOG_DEBUG("Received heartbeat from worker {} (slots: {}/{})", worker_ip, active_slots, total_slots);
         } 
         else if (type == PACKET_COMPILE_RESP) {
             uint32_t file_len_net = 0;
@@ -152,6 +153,7 @@ void WorkerHandler::handle_worker_connection(socket_t worker_sock) {
             }
 
             std::shared_ptr<CompileResult> res;
+            SUCO_LOG_INFO("Received compile response from worker {} for {} (Exit: {})", worker_ip, filename, exit_code);
             {
                 std::lock_guard<std::mutex> lock(m_state.results_mutex);
                 auto it = m_state.compile_results.find(filename);

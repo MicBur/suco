@@ -4,6 +4,14 @@
 
 #include <iostream>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#include <cstdlib>
+#endif
+
 namespace suco {
 
 int LocalCompiler::compile(const CompilerCommand& cmd) {
@@ -30,6 +38,40 @@ int LocalCompiler::compile(const CompilerCommand& cmd) {
     }
 
     return exit_code;
+}
+
+int LocalCompiler::execute_direct(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return -1;
+    }
+#ifdef _WIN32
+    std::vector<const char*> c_args;
+    for (const auto& arg : args) {
+        c_args.push_back(arg.c_str());
+    }
+    c_args.push_back(nullptr);
+    return static_cast<int>(_spawnvp(_P_WAIT, args[0].c_str(), const_cast<char* const*>(c_args.data())));
+#else
+    pid_t pid = fork();
+    if (pid == 0) {
+        std::vector<char*> c_args;
+        for (const auto& arg : args) {
+            c_args.push_back(const_cast<char*>(arg.c_str()));
+        }
+        c_args.push_back(nullptr);
+        execvp(args[0].c_str(), c_args.data());
+        std::exit(127);
+    } else if (pid < 0) {
+        return -1;
+    } else {
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        }
+        return status;
+    }
+#endif
 }
 
 std::pair<int, std::string> LocalCompiler::run_and_capture(const std::vector<std::string>& args) {

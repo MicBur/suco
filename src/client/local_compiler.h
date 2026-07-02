@@ -18,6 +18,7 @@ public:
      * @return Den Exit-Code des lokalen Compiler-Prozesses.
      */
     static int compile(const CompilerCommand& cmd);
+    static int execute_direct(const std::vector<std::string>& args);
 
 private:
     /**

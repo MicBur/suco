@@ -5,6 +5,8 @@
 #include <iostream>
 #include <mutex>
 #include <string_view>
+#include <cstdlib>
+#include <cstring>
 
 #ifdef _WIN32
     #include <process.h>
@@ -84,7 +86,8 @@ CompilerCommand CompilerCommand::parse(int argc, char** argv) {
     }
 
     if (cmd.raw_args.empty()) {
-        return cmd;
+        // Falls als Wrapper aufgerufen und ohne Argumente, leeres Kommando zurückliefern
+        // (Wird in LocalCompiler / main.cpp abgefangen)
     }
 
     // Check for dashboard monitor CLI request
@@ -93,7 +96,43 @@ CompilerCommand CompilerCommand::parse(int argc, char** argv) {
         return cmd;
     }
 
-    cmd.compiler_path = cmd.raw_args[0];
+    // Determine if we were called directly as compiler wrapper (suco-cl or suco-cl++)
+    std::string binary_name = argv[0];
+    size_t last_slash = binary_name.find_last_of("\\/");
+    if (last_slash != std::string::npos) {
+        binary_name = binary_name.substr(last_slash + 1);
+    }
+    std::transform(binary_name.begin(), binary_name.end(), binary_name.begin(), ::tolower);
+    #ifdef _WIN32
+    if (ends_with(binary_name, ".exe")) {
+        binary_name = binary_name.substr(0, binary_name.size() - 4);
+    }
+    #endif
+
+    bool called_as_wrapper = (binary_name == "suco-cl" || binary_name == "suco-cl++");
+
+    if (called_as_wrapper) {
+        bool is_cpp = (binary_name == "suco-cl++");
+        const char* env_var = is_cpp ? "SUCO_REAL_CXX" : "SUCO_REAL_CC";
+        const char* env_val = std::getenv(env_var);
+        
+        if (env_val && std::strlen(env_val) > 0) {
+            cmd.compiler_path = env_val;
+        } else {
+            #ifdef _WIN32
+            cmd.compiler_path = "cl.exe";
+            #else
+            cmd.compiler_path = is_cpp ? "g++" : "gcc";
+            #endif
+        }
+        
+        // Den echten Compiler-Pfad ganz vorne einfügen, damit der Rest des Codes wie gewohnt arbeitet
+        cmd.raw_args.insert(cmd.raw_args.begin(), cmd.compiler_path);
+    } else {
+        if (!cmd.raw_args.empty()) {
+            cmd.compiler_path = cmd.raw_args[0];
+        }
+    }
     
     // Check if MSVC is used (ends with cl or cl.exe)
     cmd.is_msvc = ends_with(cmd.compiler_path, "cl.exe") || ends_with(cmd.compiler_path, "cl");
@@ -138,9 +177,25 @@ CompilerCommand CompilerCommand::parse(int argc, char** argv) {
                 }
             } else if (arg.rfind("/std:", 0) == 0 || arg.rfind("-std:", 0) == 0) {
                 cmd.language_standard = arg;
-            } else if (arg.rfind("/Yu", 0) == 0 || arg.rfind("/Yc", 0) == 0 || arg.rfind("/Fp", 0) == 0) {
+            } else if (arg.rfind("/Yc", 0) == 0 || arg.rfind("-Yc", 0) == 0) {
+                cmd.is_precompiled_header = true;
+                cmd.is_pch_creation = true;
+                cmd.other_flags.push_back(arg);
+            } else if (arg.rfind("/Yu", 0) == 0 || arg.rfind("-Yu", 0) == 0) {
+                cmd.is_precompiled_header = true;
+                cmd.is_pch_usage = true;
+                cmd.other_flags.push_back(arg);
+            } else if (arg.rfind("/Y-", 0) == 0 || arg.rfind("-Y-", 0) == 0) {
+                cmd.other_flags.push_back(arg);
+            } else if (arg.rfind("/Fp", 0) == 0 || arg.rfind("-Fp", 0) == 0) {
                 cmd.is_precompiled_header = true;
                 cmd.other_flags.push_back(arg);
+                if (arg.size() > 3) {
+                    cmd.pch_file = arg.substr(3);
+                } else if (i + 1 < cmd.raw_args.size()) {
+                    cmd.pch_file = cmd.raw_args[i + 1];
+                    cmd.other_flags.push_back(cmd.raw_args[++i]);
+                }
             } else if (ends_with(arg, ".cpp") || ends_with(arg, ".cc") || ends_with(arg, ".cxx") || ends_with(arg, ".c")) {
                 cmd.source_file = arg;
             } else {
@@ -176,11 +231,34 @@ CompilerCommand CompilerCommand::parse(int argc, char** argv) {
                 }
             } else if (arg.rfind("-std=", 0) == 0) {
                 cmd.language_standard = arg;
-            } else if (arg == "-include-pch" || arg.rfind("-fpch-preprocess", 0) == 0) {
+            } else if (arg == "-include") {
+                cmd.other_flags.push_back(arg);
+                if (i + 1 < cmd.raw_args.size()) {
+                    cmd.other_flags.push_back(cmd.raw_args[++i]);
+                }
+            } else if (arg == "-include-pch") {
                 cmd.is_precompiled_header = true;
+                cmd.is_pch_usage = true;
+                cmd.other_flags.push_back(arg);
+                if (i + 1 < cmd.raw_args.size()) {
+                    cmd.pch_file = cmd.raw_args[i + 1];
+                    cmd.other_flags.push_back(cmd.raw_args[++i]);
+                }
+            } else if (arg.rfind("-fpch-preprocess", 0) == 0) {
+                cmd.is_precompiled_header = true;
+                cmd.is_pch_usage = true;
+                cmd.other_flags.push_back(arg);
+            } else if (ends_with(arg, ".gch") || ends_with(arg, ".pch")) {
+                cmd.is_precompiled_header = true;
+                cmd.is_pch_usage = true;
+                cmd.pch_file = arg;
                 cmd.other_flags.push_back(arg);
             } else if (ends_with(arg, ".cpp") || ends_with(arg, ".cc") || ends_with(arg, ".cxx") || ends_with(arg, ".c")) {
                 cmd.source_file = arg;
+            } else if (ends_with(arg, ".h") || ends_with(arg, ".hpp") || ends_with(arg, ".hxx") || ends_with(arg, ".hh")) {
+                cmd.source_file = arg;
+                cmd.is_precompiled_header = true;
+                cmd.is_pch_creation = true;
             } else {
                 cmd.other_flags.push_back(arg);
             }

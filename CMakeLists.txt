@@ -4,6 +4,10 @@ project(suco CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    link_libraries(-static-libstdc++ -static-libgcc)
+endif()
+
 # Find OpenSSL for SHA-256 hashing
 find_package(OpenSSL REQUIRED)
 
@@ -15,6 +19,7 @@ include_directories(
 # Common sources
 set(COMMON_SOURCES
     src/common/hash_util.cpp
+    src/common/logging.cpp
 )
 
 # Define platform-specific socket library
@@ -23,21 +28,36 @@ if(WIN32)
     set(SOCKET_LIBS "ws2_32")
 endif()
 
-# Client: suco (Compiler wrapper)
-add_executable(suco
+# Client Sources Shared Variable
+set(CLIENT_SOURCES
     src/client/main.cpp
     src/client/compiler_command.cpp
     src/client/utils.cpp
-    src/client/logging.cpp
     src/client/client_config.cpp
     src/client/local_compiler.cpp
     src/client/network_client.cpp
     src/client/suco_client.cpp
     ${COMMON_SOURCES}
 )
-target_link_libraries(suco
+
+# Compiler Wrapper CC: suco-cl
+add_executable(suco-cl ${CLIENT_SOURCES})
+target_link_libraries(suco-cl
     OpenSSL::Crypto
     ${SOCKET_LIBS}
+)
+
+# Compiler Wrapper CXX: suco-cl++
+add_executable(suco-cl++ ${CLIENT_SOURCES})
+target_link_libraries(suco-cl++
+    OpenSSL::Crypto
+    ${SOCKET_LIBS}
+)
+
+# CLI Wrapper Tool: suco
+add_executable(suco
+    src/suco_wrapper/main.cpp
+    src/client/client_config.cpp
 )
 
 # Coordinator: suco-coordinator
@@ -61,6 +81,12 @@ target_link_libraries(suco-coordinator
 # Worker: suco-worker
 add_executable(suco-worker
     src/worker/main.cpp
+    src/worker/config.cpp
+    src/worker/metrics.cpp
+    src/worker/network_client.cpp
+    src/worker/heartbeat_manager.cpp
+    src/worker/job_executor.cpp
+    src/worker/worker.cpp
     ${COMMON_SOURCES}
 )
 target_link_libraries(suco-worker

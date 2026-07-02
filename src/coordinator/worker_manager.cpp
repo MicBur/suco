@@ -1,4 +1,5 @@
 #include "worker_manager.h"
+#include "logging.h"
 #include <iostream>
 #include <algorithm>
 
@@ -16,7 +17,7 @@ void WorkerManager::deregister_worker(socket_t socket) {
     std::lock_guard<std::mutex> lock(m_mutex);
     for (auto it = m_workers.begin(); it != m_workers.end(); ++it) {
         if ((*it)->socket == socket) {
-            std::cout << "suco-coordinator: Worker offline: " << (*it)->name << " (" << (*it)->ip << ")" << std::endl;
+            SUCO_LOG_INFO("Worker offline: {} ({})", (*it)->name, (*it)->ip);
             close_socket((*it)->socket);
             m_workers.erase(it);
             break;
@@ -45,8 +46,7 @@ std::vector<std::string> WorkerManager::cleanup_inactive_workers() {
     for (auto it = m_workers.begin(); it != m_workers.end();) {
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - (*it)->last_heartbeat).count();
         if (elapsed_ms > static_cast<long long>(m_config.get_worker_timeout_ms())) {
-            std::cout << "suco-coordinator: Worker " << (*it)->name << " (" << (*it)->ip 
-                      << ") disconnected (heartbeat timeout)." << std::endl;
+            SUCO_LOG_WARNING("Worker {} ({}) disconnected (heartbeat timeout).", (*it)->name, (*it)->ip);
             
             disconnected_ips.push_back((*it)->ip);
             close_socket((*it)->socket);

@@ -27,13 +27,7 @@ public:
     int run(const CompilerCommand& command);
 
 private:
-    /**
-     * @brief Tries to retrieve the compilation output from the coordinator's cache.
-     * @param cmd The compilation command details.
-     * @param out_result Populated with the compilation outputs upon a cache hit.
-     * @return True if a cache hit occurred, false otherwise.
-     */
-    bool try_cache_hit(const CompilerCommand& cmd, CompileResult& out_result);
+
 
     /**
      * @brief Tries to compile the source code remotely on the SUCO worker grid.
