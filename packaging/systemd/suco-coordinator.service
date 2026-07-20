@@ -1,6 +1,6 @@
 [Unit]
-Description=SUCO Lite Compile Coordinator
-Documentation=https://github.com/  (SUCO Lite)
+Description=SUCO Compile Coordinator
+Documentation=https://github.com/  (SUCO)
 After=network-online.target
 Wants=network-online.target
 

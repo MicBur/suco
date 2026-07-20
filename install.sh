@@ -1,5 +1,5 @@
 #!/bin/bash
-# SUCO Lite Linux Installer
+# SUCO Linux Installer
 # Muss als root ausgeführt werden!
 
 set -e
@@ -11,7 +11,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo -e "\e[36m=============================================\e[0m"
-echo -e "\e[36m      SUCO Lite - Linux Installer\e[0m"
+echo -e "\e[36m      SUCO - Linux Installer\e[0m"
 echo -e "\e[36m=============================================\e[0m"
 echo ""
 

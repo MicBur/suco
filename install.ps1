@@ -1,4 +1,4 @@
-# SUCO Lite Windows Installer
+# SUCO Windows Installer
 # Muss als Administrator ausgeführt werden!
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ if (-not $isAdmin) {
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "      SUCO Lite - Windows Installer" -ForegroundColor Cyan
+Write-Host "      SUCO - Windows Installer" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
 

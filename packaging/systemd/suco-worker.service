@@ -1,6 +1,6 @@
 [Unit]
-Description=SUCO Lite Compile Worker
-Documentation=https://github.com/  (SUCO Lite)
+Description=SUCO Compile Worker
+Documentation=https://github.com/  (SUCO)
 After=network-online.target
 Wants=network-online.target
 

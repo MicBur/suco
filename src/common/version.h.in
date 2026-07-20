@@ -14,7 +14,7 @@ namespace suco {
 // and grid operators can confirm every node runs a matching build.
 inline int print_version(const char* component) {
     // Intentionally free of build timestamp / host so packages are reproducible.
-    fprintf(stdout, "%s (SUCO Lite) %s\n", component, SUCO_VERSION_STRING);
+    fprintf(stdout, "%s (SUCO) %s\n", component, SUCO_VERSION_STRING);
     return 0;
 }
 } // namespace suco

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SUCO Lite — pre-remove. Cleanly stop and disable the services we shipped so
+# SUCO — pre-remove. Cleanly stop and disable the services we shipped so
 # removal never leaves orphaned units pointing at deleted binaries.
 set -e
 

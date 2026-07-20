@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(suco VERSION 0.9.1 LANGUAGES C CXX)
+project(suco VERSION 0.9.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -257,7 +257,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     set(CPACK_PACKAGE_NAME "suco")
     set(CPACK_PACKAGE_VENDOR "SUCO")
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "SUCO Lite — distributed C/C++ compiler with content-addressed caching")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "SUCO — distributed C/C++ compiler with content-addressed caching")
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
     set(CPACK_PACKAGE_CONTACT "micbur1488@gmail.com")
     set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")

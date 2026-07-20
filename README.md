@@ -6,7 +6,7 @@
   <img src="assets/suco_logo.png" alt="SUCO Logo" width="120">
 </p>
 
-<h1 align="center">SUCO Lite</h1>
+<h1 align="center">SUCO</h1>
 <p align="center">
   <strong>SUper COmpiler Grid – Distributed C/C++ Compilation and Caching System for Local Networks.</strong>
 </p>
@@ -27,7 +27,7 @@
 
 ## ⚡ At a Glance
 
-SUCO Lite is a **high-performance, lightweight alternative** to expensive proprietary solutions like IncrediBuild or legacy systems like Icecream/distcc. It is designed for **maximum speed with minimal setup**:
+SUCO is a **high-performance, lightweight alternative** to expensive proprietary solutions like IncrediBuild or legacy systems like Icecream/distcc. It is designed for **maximum speed with minimal setup**:
 
 - 🔍 **Zero-Config Auto-Discovery** – Workers automatically discover the coordinator via UDP Broadcast.
 - 💾 **Intelligent SSD Cache** – SHA-256-based LRU cache with metadata tracking and versioned keys.
@@ -287,7 +287,7 @@ The built-in dashboard on **port 9001** visualizes:
 
 ## 🤝 Comparison with Alternatives
 
-| Feature | SUCO Lite | IncrediBuild | Icecream | distcc |
+| Feature | SUCO | IncrediBuild | Icecream | distcc |
 |---|:---:|:---:|:---:|:---:|
 | **Price** | ✅ Free | ❌ ~$2000/license | ✅ Free | ✅ Free |
 | **SSD Caching** | ✅ SHA-256 LRU | ✅ Proprietary | ❌ No | ❌ No |

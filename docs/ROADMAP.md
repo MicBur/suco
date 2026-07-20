@@ -1,4 +1,4 @@
-# SUCO Lite — Roadmap
+# SUCO — Roadmap
 
 **Goal:** Become the best free distributed C/C++ build system for Linux LANs — measurably
 faster than Icecream/distcc, and closing the architectural gap to IncrediBuild step by step.

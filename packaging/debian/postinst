@@ -1,5 +1,5 @@
 #!/bin/sh
-# SUCO Lite — post-install. Deliberately does NOT enable or start any service:
+# SUCO — post-install. Deliberately does NOT enable or start any service:
 # a fresh install must never silently join or reconfigure a running grid. The
 # admin decides each node's role with `systemctl enable --now suco-worker`
 # (compile node) or `suco-coordinator` (+ worker on the head node).
@@ -10,7 +10,7 @@ if [ -d /run/systemd/system ]; then
 fi
 
 cat <<'EOF'
-SUCO Lite installed. Nothing was started automatically.
+SUCO installed. Nothing was started automatically.
 
   Compile node:   sudo systemctl enable --now suco-worker
   Head node:      sudo systemctl enable --now suco-coordinator suco-worker
