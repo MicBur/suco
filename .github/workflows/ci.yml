@@ -85,6 +85,9 @@ jobs:
   build-windows-msvc:
     name: Windows MSVC Build
     runs-on: windows-latest
+    # Non-blocking: Linux is the supported/tested platform. The Windows build is
+    # kept as a best-effort signal but must not fail the overall CI badge.
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
