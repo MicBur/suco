@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v2.0.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.9.2-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
   <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
@@ -46,6 +46,20 @@ SUCO is a **high-performance, lightweight alternative** to expensive proprietary
 ---
 
 ## 🏆 Benchmark Results
+
+### 🗄️ Real-world: RocksDB (342 translation units, 4-node grid, idle machine)
+
+Head-to-head against [Icecream](https://github.com/icecc/icecream) under identical conditions
+(same session, same flags, `-j32`), building the full `librocksdb.a`:
+
+| Build System | Cold build | Warm rebuild |
+|---|---|---|
+| 🍦 **Icecream** | 101.9s | 101.9s *(no cache — every rebuild is a full compile)* |
+| 🚀 **SUCO** | **100.7s** *(parity)* | **24.7s** *(**4.1× faster**)* |
+
+**Cold builds are on par with Icecream; warm rebuilds are ~4× faster** because SUCO serves unchanged
+objects straight from its content-addressed cache instead of recompiling them. Independently reproduced
+across two idle runs; three consecutive cold builds each completed all 342 objects.
 
 ### ⏱️ Distributed GoogleTest Build Suite (108 C++ Files, `-j17`)
 > Tested on a real grid with **4× Nodes** (parallelized using `-j17`):
@@ -196,23 +210,33 @@ cmake --build build --config Release
 
 ### Installation (Linux)
 
-**Option A — Debian/Ubuntu package (recommended for grids):** reproducible, versioned, upgradable.
+**Option A — `apt install suco` (recommended):** add the signed APT repo once, then install and upgrade
+like any system package.
 
 ```bash
-# Build the package once…
-cd build_linux && cpack -G "TGZ;DEB"
-# …then install it on every node:
-sudo apt install ./suco-lite_0.9.0_amd64.deb
+curl -fsSL https://micbur.github.io/suco/suco-archive-keyring.asc \
+  | sudo tee /etc/apt/keyrings/suco.asc >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/suco.asc] https://micbur.github.io/suco stable main" \
+  | sudo tee /etc/apt/sources.list.d/suco.list >/dev/null
+sudo apt update && sudo apt install suco
 
 # Nothing starts automatically. Enable the role each node should play:
 sudo systemctl enable --now suco-worker                    # compile node
 sudo systemctl enable --now suco-coordinator suco-worker   # head node
-suco --version                                             # verify the build
+suco --version                                             # verify
 ```
 
 Installs binaries to `/usr/bin/`, systemd units to `/usr/lib/systemd/system/` (shipped **disabled** —
 a fresh install never silently joins a running grid), dashboard to `/usr/share/suco/`. To enable
 grid-wide auth, set `SUCO_SECRET` in the unit (or an `EnvironmentFile`) on every node and restart.
+
+**Option B — build the `.deb` yourself:**
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+( cd build && cpack -G DEB )
+sudo apt install ./build/suco_*_amd64.deb
+```
 
 **Option B — interactive installer:**
 
