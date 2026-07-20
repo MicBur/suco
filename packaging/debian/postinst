@@ -1,0 +1,23 @@
+#!/bin/sh
+# SUCO Lite — post-install. Deliberately does NOT enable or start any service:
+# a fresh install must never silently join or reconfigure a running grid. The
+# admin decides each node's role with `systemctl enable --now suco-worker`
+# (compile node) or `suco-coordinator` (+ worker on the head node).
+set -e
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+cat <<'EOF'
+SUCO Lite installed. Nothing was started automatically.
+
+  Compile node:   sudo systemctl enable --now suco-worker
+  Head node:      sudo systemctl enable --now suco-coordinator suco-worker
+  Dashboard:      http://<coordinator>:9001
+  Enable grid auth (optional): set SUCO_SECRET in the unit / an EnvironmentFile
+                  on every node, then restart the services.
+  Version:        suco --version
+EOF
+
+exit 0

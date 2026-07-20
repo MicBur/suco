@@ -1,0 +1,12 @@
+#!/bin/sh
+# SUCO Lite — pre-remove. Cleanly stop and disable the services we shipped so
+# removal never leaves orphaned units pointing at deleted binaries.
+set -e
+
+if [ -d /run/systemd/system ]; then
+    for unit in suco-coordinator suco-worker; do
+        systemctl disable --now "${unit}.service" >/dev/null 2>&1 || true
+    done
+fi
+
+exit 0

@@ -43,8 +43,8 @@ scripts/deploy_grid.sh
 scripts/enable_auth.sh
 
 # ---- misc scratch ----
-d:*
-d*/
+# (removed overbroad d:* )
+# (removed overbroad d*/ — matched docs/)
 test.cpp
 test.o
 benchmark_large.cpp
@@ -54,3 +54,4 @@ benchmark_large.obj
 run_massive_benchmark.sh
 run_massive_benchmark.ps1
 generate_benchmark.ps1
+d??comp?scratch?qt_test/
