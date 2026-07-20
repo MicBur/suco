@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+import sys
+import os
+import json
+
+def clean_compile_commands(build_dir):
+    json_path = os.path.join(build_dir, "compile_commands.json")
+    if not os.path.exists(json_path):
+        return False
+        
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"SUCO cleaner error reading {json_path}: {e}")
+        return False
+
+    modified = False
+    
+    # Suffixes to match
+    suffixes = [
+        "suco-cl++", "suco-cl", 
+        "suco-cl++.exe", "suco-cl.exe"
+    ]
+    
+    for entry in data:
+        # Add metadata attributes
+        if "suco_used" not in entry:
+            entry["suco_used"] = True
+            entry["suco_build"] = True
+            modified = True
+            
+        # Clean "command" string
+        if "command" in entry:
+            cmd = entry["command"]
+            parts = cmd.split(" ")
+            if parts:
+                first_arg = parts[0]
+                is_launcher = False
+                for s in suffixes:
+                    if first_arg == s or first_arg.endswith("/" + s) or first_arg.endswith("\\" + s):
+                        is_launcher = True
+                        break
+                
+                if is_launcher:
+                    # Strip the first argument
+                    entry["command"] = " ".join(parts[1:])
+                    modified = True
+                    
+        # Clean "arguments" list
+        if "arguments" in entry:
+            args = entry["arguments"]
+            if args:
+                first_arg = args[0]
+                is_launcher = False
+                for s in suffixes:
+                    if first_arg == s or first_arg.endswith("/" + s) or first_arg.endswith("\\" + s):
+                        is_launcher = True
+                        break
+                
+                if is_launcher:
+                    entry["arguments"] = args[1:]
+                    modified = True
+                    
+    if modified:
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            print(f"SUCO: compile_commands.json erfolgreich bereinigt.")
+            return True
+        except Exception as e:
+            print(f"SUCO cleaner error writing {json_path}: {e}")
+            
+    return False
+
+if __name__ == "__main__":
+    build_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    clean_compile_commands(build_dir)

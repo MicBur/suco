@@ -1,0 +1,56 @@
+# ---- build artifacts ----
+build/
+build_*/
+*.o
+*.obj
+*.i
+*.ii
+*.a
+*.so
+*.deb
+*.rpm
+*.tar.gz
+*.tar.zst
+*.zip
+gcm.cache/
+*.gch
+*.pch
+
+# ---- editor / OS noise ----
+.DS_Store
+*.swp
+*~
+nohup.out
+*.log
+
+# ---- internal working docs (NOT part of the product) ----
+CLAUDE.md
+ROADMAP-IB.md
+FIX_REPORT.md
+brain-claude.md
+brain-ag.md
+benchmark_results.md
+benchmarks/
+massive_benchmark/
+scratch/
+.agents/
+
+# ---- deployment specific to a private grid (contains host topology + password) ----
+# These target one specific private LAN (baked-in credentials + static host IPs).
+# Users deploy their own way (apt install + systemctl enable). Publish sanitized
+# templates later if wanted.
+scripts/deploy_grid.sh
+scripts/enable_auth.sh
+
+# ---- misc scratch ----
+d:*
+d*/
+test.cpp
+test.o
+benchmark_large.cpp
+benchmark_large.obj
+
+# personal benchmark tooling (targets a specific grid)
+run_massive_benchmark.sh
+run_massive_benchmark.ps1
+generate_benchmark.ps1

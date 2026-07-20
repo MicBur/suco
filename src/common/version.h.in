@@ -1,0 +1,20 @@
+#pragma once
+#include <cstdio>
+// Generated from version.h.in by CMake — do not edit the generated copy.
+// Single source of truth for the SUCO version is the project() VERSION in the
+// top-level CMakeLists.txt.
+
+#define SUCO_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define SUCO_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define SUCO_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define SUCO_VERSION_STRING "@PROJECT_VERSION@"
+
+namespace suco {
+// Component name is passed by each binary so `--version` output is self-identifying
+// and grid operators can confirm every node runs a matching build.
+inline int print_version(const char* component) {
+    // Intentionally free of build timestamp / host so packages are reproducible.
+    fprintf(stdout, "%s (SUCO Lite) %s\n", component, SUCO_VERSION_STRING);
+    return 0;
+}
+} // namespace suco

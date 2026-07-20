@@ -1,0 +1,12 @@
+# Ignore build folder and git metadata
+build/
+.git/
+
+# Ignore intermediate test files
+*.o
+*.i
+*.ii
+test.cpp
+test.o
+nohup.out
+*.log

@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-linux-release:
+    name: Linux Release Build & Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libzstd-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j "$(nproc)"
+
+      - name: Run smoke test (loopback grid + cache hit)
+        run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
+
+      - name: Run cache-correctness suite (no cache poisoning / miscompilation)
+        run: bash tests/cache_correctness_test.sh "$GITHUB_WORKSPACE/build"
+
+      - name: Run chaos / robustness suite (crash-resistance + failover)
+        run: bash tests/chaos_test.sh "$GITHUB_WORKSPACE/build"
+
+      - name: Build .deb / .tar.gz packages (packaging regression guard)
+        working-directory: build
+        run: |
+          cpack -G "TGZ;DEB"
+          ls -1 suco_*_amd64.deb suco-*-Linux.tar.gz
+          dpkg-deb -I suco_*_amd64.deb
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: suco-lite-packages
+          path: |
+            build/suco_*_amd64.deb
+            build/suco-*-Linux.tar.gz
+          if-no-files-found: error
+
+  build-linux-debug-sanitizers:
+    name: Linux Debug Build (ASan + UBSan) & Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libzstd-dev
+
+      - name: Configure CMake with Sanitizers
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build --config Debug -j "$(nproc)"
+
+      - name: Run smoke test under sanitizers
+        env:
+          # halt_on_error surfaces real bugs; leak detection stays off for now
+          # (daemon/coordinator hold intentional process-lifetime allocations —
+          # revisit when a leak-clean baseline is established).
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
+
+  build-windows-msvc:
+    name: Windows MSVC Build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies via vcpkg
+        run: |
+          vcpkg install openssl zstd --triplet x64-windows
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        run: cmake --build build --config Release

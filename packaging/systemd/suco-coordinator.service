@@ -1,0 +1,25 @@
+[Unit]
+Description=SUCO Lite Compile Coordinator
+Documentation=https://github.com/  (SUCO Lite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Grid-wide authentication is opt-in: set SUCO_SECRET here (or in an
+# EnvironmentFile) to require HMAC challenge-response from workers and clients.
+# Environment=SUCO_SECRET=change-me
+ExecStart=/usr/bin/suco-coordinator
+Restart=on-failure
+RestartSec=2
+# Hardening — the coordinator needs no privileges beyond its sockets.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RuntimeDirectory=suco
+StateDirectory=suco
+WorkingDirectory=/var/lib/suco
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=SUCO Lite Compile Worker
+Documentation=https://github.com/  (SUCO Lite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Slots default to the CPU count; override with e.g. ExecStart=... --slots 6.
+# The worker auto-discovers the coordinator via UDP broadcast; pin it with
+# --coordinator HOST:9000 if broadcast discovery is unavailable on your network.
+# Set SUCO_SECRET to match the coordinator when grid auth is enabled.
+# Environment=SUCO_SECRET=change-me
+ExecStart=/usr/bin/suco-worker
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RuntimeDirectory=suco
+StateDirectory=suco
+WorkingDirectory=/var/lib/suco
+
+[Install]
+WantedBy=multi-user.target

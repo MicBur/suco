@@ -1,0 +1,72 @@
+name: Publish APT repo
+
+# Builds the .deb, signs an APT repository, and publishes it to GitHub Pages so
+# users can `sudo apt install suco`. Runs when you push a version tag (v1.2.3).
+#
+# ONE-TIME SETUP (see docs/INSTALL-apt.md):
+#   1. Generate a signing key:  gpg --full-generate-key   (ed25519)
+#   2. Export the PRIVATE key:   gpg --armor --export-secret-keys <keyid>
+#      and paste it into repo Settings → Secrets → Actions → new secret APT_GPG_PRIVATE_KEY
+#   3. Settings → Pages → Source: "GitHub Actions"
+# The matching PUBLIC key is published in the repo automatically (users fetch it).
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build + packaging deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libzstd-dev dpkg-dev gnupg
+
+      - name: Build release + .deb
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j "$(nproc)"
+          ( cd build && cpack -G DEB )
+
+      - name: Import signing key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APT_GPG_PRIVATE_KEY" ]; then
+            echo "::error::Secret APT_GPG_PRIVATE_KEY is not set — see docs/INSTALL-apt.md"
+            exit 1
+          fi
+          echo "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "SUCO_KEYID=$(gpg --list-keys --with-colons | awk -F: '/^pub/{print $5; exit}')" >> "$GITHUB_ENV"
+
+      - name: Build signed APT repo
+        run: |
+          DEB=$(ls build/suco_*_amd64.deb | head -1)
+          bash scripts/build_apt_repo.sh "$DEB" "$GITHUB_WORKSPACE/site" "$SUCO_KEYID"
+          # a landing page so the Pages root isn't blank
+          cp docs/INSTALL-apt.md "$GITHUB_WORKSPACE/site/index.md" 2>/dev/null || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
