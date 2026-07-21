@@ -32,17 +32,41 @@ endif()
 
 # Find zstd for compression
 if(WIN32 AND NOT CMAKE_TOOLCHAIN_FILE)
-    add_library(zstd::libzstd_static STATIC IMPORTED)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6")
+        # Locally built static zstd (see brain-win.md) — preferred on dev machines.
+        add_library(zstd::libzstd_static STATIC IMPORTED)
         set_target_properties(zstd::libzstd_static PROPERTIES
             IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6/build/cmake/build/lib/libzstd.a"
             INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6/lib"
         )
     else()
-        set_target_properties(zstd::libzstd_static PROPERTIES
-            IMPORTED_LOCATION "D:/zstd-build/lib/Release/zstd_static.lib"
-            INTERFACE_INCLUDE_DIRECTORIES "D:/zstd-src-dir/zstd-1.5.6/lib"
-        )
+        # System-installed zstd (MSYS2/MinGW, CI runners). Try the CMake config
+        # first, then a plain library search, then the legacy hardcoded paths of
+        # the original dev machine as a last resort.
+        find_package(zstd CONFIG QUIET)
+        if(NOT TARGET zstd::libzstd_static AND TARGET zstd::libzstd)
+            add_library(zstd::libzstd_static INTERFACE IMPORTED)
+            set_target_properties(zstd::libzstd_static PROPERTIES
+                INTERFACE_LINK_LIBRARIES zstd::libzstd
+            )
+        endif()
+        if(NOT TARGET zstd::libzstd_static)
+            find_path(ZSTD_INCLUDE_DIR zstd.h)
+            find_library(ZSTD_LIBRARY NAMES zstd libzstd zstd_static)
+            if(ZSTD_INCLUDE_DIR AND ZSTD_LIBRARY)
+                add_library(zstd::libzstd_static UNKNOWN IMPORTED)
+                set_target_properties(zstd::libzstd_static PROPERTIES
+                    IMPORTED_LOCATION "${ZSTD_LIBRARY}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
+                )
+            else()
+                add_library(zstd::libzstd_static STATIC IMPORTED)
+                set_target_properties(zstd::libzstd_static PROPERTIES
+                    IMPORTED_LOCATION "D:/zstd-build/lib/Release/zstd_static.lib"
+                    INTERFACE_INCLUDE_DIRECTORIES "D:/zstd-src-dir/zstd-1.5.6/lib"
+                )
+            endif()
+        endif()
     endif()
 else()
     find_package(zstd CONFIG REQUIRED)
