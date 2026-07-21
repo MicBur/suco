@@ -32,9 +32,11 @@ speed, but be installable in 30 seconds via `apt`.**
   loopback grid, dispatch via cmd.exe, cache hit. PR onto main is the next step; the CI push
   trigger temporarily includes `windows-mingw` — drop after merge. Until merged, `origin/main`
   does not build on Windows and still carries the header-set bug.
-- The old best-effort **Windows MSVC CI job was already red on main** before this branch existed
-  (vcpkg configure failure, `continue-on-error` so nothing noticed). Not touched here; either fix
-  it or retire it in favour of the MinGW job, which actually tests the grid.
+- The best-effort **Windows MSVC CI job**: its configure step was broken since 2.1.0 (vcpkg was
+  missing `sqlite3` for the HistoryWriter's `find_package(SQLite3 REQUIRED)`) — fixed 2026-07-21,
+  configure is green again. The job now fails at BUILD: real MSVC compile errors in the source.
+  That is a separate porting work package (check the Actions log for the first error); the job
+  stays `continue-on-error` as a canary. MinGW remains the supported Windows toolchain.
 
 ---
 
@@ -132,13 +134,19 @@ ignore `SIGTERM` → `SIGKILL` when needed.
   "same state" for the project. As of 2026-07-21 the Windows box is a real clone with `origin`
   set (it used to be a ZIP copy), so no more manual file shuttling.
 - Write your side into `brain-win.md`. Same rule as here: **no secrets — the repo is public.**
-- **To serve Windows clients, a Linux node needs BOTH `apt install mingw-w64` AND a worker build
-  that advertises it** (probe added 2026-07-21; ships with the next release). The scheduler now
-  matches Windows jobs by a target-qualified dispatch id (`x86_64-w64-mingw32-g++`) against the
-  worker's toolchain map — no protocol change, the field was always a free-form string, so old
-  workers are simply never selected and the client compiles locally. Version gate applies: the
-  node's cross-g++ major must match the client's local g++ major (13 here; Debian bookworm ships
-  12 → skipped safely). Linux→Linux jobs are unaffected, they still dispatch as plain `g++`.
+- **Cross-compilers are INSTALLED on all four nodes (2026-07-21):** `g++-mingw-w64-x86-64`,
+  GCC **13.2**, alternatives set to **posix** threads (matching the Windows client's Qt MinGW
+  13.1-posix — the majors line up, the version gate will pass). The scheduler matches Windows
+  jobs by a target-qualified dispatch id (`x86_64-w64-mingw32-g++`) against the worker's
+  toolchain map — no protocol change, old workers are simply never selected and the client
+  compiles locally. **The one remaining step: a release**, so the nodes' workers pick up the
+  toolchain probe and start advertising the cross compiler. Linux→Linux jobs are unaffected.
+- **Grid auth vs. the Windows client:** the coordinator (on k3master, NOT Brain-OS) has
+  `SUCO_SECRET` enabled; a client without it is refused at handshake. Verified from the Windows
+  box: the refusal degrades into a clean local compile (exit 0, object produced) — tested 3×.
+  One first-ever-contact run ended exit -1 with no object and could NOT be reproduced; noted in
+  brain-win.md, worth an eye. To actually join the grid, the Windows client needs `SUCO_SECRET`
+  set (value lives in private notes, never in the repo).
 - **Header sets / PCH work on Windows now** (2026-07-21): the system-header predicate also accepts
   paths containing `mingw`. Invariant #1 held by construction — additive predicate (no `/usr/`
   path changes membership) and Windows had zero existing header-set keys. Verified end-to-end on

@@ -405,11 +405,22 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   Rollout is graceful: old 0.9.2 workers never advertise the qualified name → scheduler finds no
   worker → the client compiles locally (correct, no wasted dispatch). Verified on the loopback
   grid: worker registers `x86_64-w64-mingw32-g++=13.1.0`, scheduler selects it, compile succeeds.
-  **Node enablement checklist (in this order):** the Linux nodes need (1) `apt install mingw-w64`
-  AND (2) a worker build containing the new probe (next release) — either alone does nothing.
-  Also note the version gate: the scheduler's major-version check compares the client's local
-  g++ (13.x here) against the node's cross g++; Debian bookworm ships mingw-w64 GCC 12 → skipped
-  (safe, local compile). The majors must line up for real cross-dispatch.
+  **Node enablement — step 1 DONE (2026-07-21):** `g++-mingw-w64-x86-64` (GCC **13.2**, posix
+  alternatives) is installed on all four nodes — Ubuntu 26.04 ships 13.2, so the major matches
+  the client's Qt MinGW 13.1 and the scheduler's version gate will pass. Step 2 is a release:
+  the nodes' 0.9.2 workers don't contain the toolchain probe yet, so nothing is advertised
+  until they're upgraded. Grid topology and access details: `brain-k3s.local.md` (machine-local,
+  git-ignored).
+  **Real-grid contact test (Windows client → k3master coordinator, auth enabled, no secret on
+  the client):** handshake refused as designed, and the client degrades into a clean local
+  compile — verified 3× (exit 0, object produced, `Falling back all 1 jobs to local`). The very
+  FIRST cold contact (empty toolchain hash-cache, empty prep cache) ended exit -1 with NO object
+  once, and did not reproduce in 3 attempts including a fully cold retry. If a "first build after
+  install fails against an auth-enabled grid" report ever comes in, start here.
+  **Minor found in the same test:** toolchain archiving fails on Windows with `tar: Couldn't open
+  zstd: No such file or directory` — bsdtar wants a `zstd` executable on PATH. Non-fatal (the
+  build continues), but toolchain upload is inert on Windows until fixed (ship zstd.exe or use
+  the in-process compressor).
 - **Resolved: header sets / PCH now work on Windows.** The system-header predicate accepts paths
   containing `mingw` in addition to the `/usr/` prefix (`header_set_hasher.cpp`) — covers Qt's
   `mingw1310_64` and MSYS2's `mingw64` trees. Invariant #1 held **by construction**, no golden
