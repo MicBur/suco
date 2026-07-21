@@ -137,10 +137,12 @@ ignore `SIGTERM` → `SIGKILL` when needed.
   would return an ELF object that only fails at link time). A node without the cross compiler
   exits 127, which invariant #3 turns into a local compile: correct, but zero distribution for
   that client. Linux→Linux jobs are unaffected, they still dispatch as plain `g++`.
-- The Windows grid works but ships **full sources**: header sets / PCH stay off there, because the
-  system-header split still only matches `/usr/`. Teaching it MinGW paths is the open win — and it
-  moves the header-set key, so it is an invariant #1 change (golden values before/after). The
-  object cache key cannot move: `content_hash` is computed in `job_sender` *before*
-  `HeaderSetHasher::compute_hash` runs.
+- **Header sets / PCH work on Windows now** (2026-07-21): the system-header predicate also accepts
+  paths containing `mingw`. Invariant #1 held by construction — additive predicate (no `/usr/`
+  path changes membership) and Windows had zero existing header-set keys. Verified end-to-end on
+  the loopback grid incl. PCH build/HIT and a `__LINE__` provenance probe byte-identical to
+  native. Cosmetic: `linemarker ignored due to incorrect nesting` warnings on the Windows worker
+  (push markers stripped with header text, return markers kept) — provenance proven unaffected;
+  worth checking whether Linux workers log the same.
 - Antigravity's own conversations/settings are not synced through this file; that's tied to the
   Antigravity account, not the git repo.

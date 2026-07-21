@@ -118,13 +118,22 @@ std::string HeaderSetHasher::compute_hash(CompilerCommand& cmd) {
                     file_path == "<command line>" || file_path.empty()) {
                     in_header = false;
                 } else {
-                    // Only system/library headers (under /usr/) belong to the header set;
-                    // the compilation unit and project-local headers stay in the TU.
+                    // Only system/library headers belong to the header set; the
+                    // compilation unit and project-local headers stay in the TU.
+                    // "/usr/" covers Linux. A path containing "mingw" covers the
+                    // Windows toolchain trees (Qt's mingw1310_64, MSYS2's mingw64);
+                    // Linux cross-headers (/usr/x86_64-w64-mingw32/...) were already
+                    // matched by the /usr/ prefix. Purely additive: no /usr/ path
+                    // changes membership, so existing Linux header-set keys cannot
+                    // move (invariant #1), and Windows had no header sets before.
                     size_t path_slash = file_path.find_last_of("/\\");
                     std::string_view f_base = (path_slash == std::string_view::npos)
                                                   ? file_path
                                                   : file_path.substr(path_slash + 1);
-                    if (f_base == source_base || !file_path.starts_with("/usr/")) {
+                    const bool is_system_path =
+                        file_path.starts_with("/usr/") ||
+                        file_path.find("mingw") != std::string_view::npos;
+                    if (f_base == source_base || !is_system_path) {
                         in_header = false;
                     } else {
                         in_header = true;

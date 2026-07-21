@@ -219,11 +219,12 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/s
 cmake --build build --config Release
 ```
 
-> 🪟 **Windows notes:** run clients with `SUCO_NO_DAEMON=1` (the IPC daemon uses Unix sockets);
-> the header-set/PCH optimization is currently Linux-only, Windows clients ship full preprocessed
-> sources (correct, slightly more network traffic). Windows clients dispatch MinGW jobs under the
-> target-qualified name `x86_64-w64-mingw32-g++`, so Linux workers can serve them once `mingw-w64`
-> is installed there — nodes without it are skipped safely (the client compiles locally).
+> 🪟 **Windows notes:** run clients with `SUCO_NO_DAEMON=1` (the IPC daemon uses Unix sockets).
+> The header-set/PCH optimization works on Windows: MinGW system headers are recognized, workers
+> cache the header text, build PCHs and serve stripped TUs (~KB instead of MB payloads). Windows
+> clients dispatch MinGW jobs under the target-qualified name `x86_64-w64-mingw32-g++`, so Linux
+> workers can serve them once `mingw-w64` is installed there — nodes without it are skipped safely
+> (the client compiles locally).
 
 ### Installation (Linux)
 

@@ -397,13 +397,21 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   now instead of returning a wrong-format object. Doing it properly means the worker advertising
   a target triple per compiler and the job carrying the required one — a wire-format change, so
   coordinator and all workers must be upgraded in lockstep.
-- **Open: header sets / PCH are still off on Windows.** The fix above makes Windows ship full
-  sources, which distributes correctly but forfeits the header-set and PCH optimisation, because
-  the `/usr/` test still never matches MinGW paths. Teaching the split about
-  `C:/Qt/Tools/...`-style system headers is the remaining win. Treat it as a cache-key change:
-  record golden `hs_hash` values plus resulting objects before and after (invariant #1). Note
-  `content_hash` is computed in `job_sender` *before* `HeaderSetHasher::compute_hash` runs, so the
-  object cache key itself cannot move — only the header-set key can.
+- **Resolved: header sets / PCH now work on Windows.** The system-header predicate accepts paths
+  containing `mingw` in addition to the `/usr/` prefix (`header_set_hasher.cpp`) — covers Qt's
+  `mingw1310_64` and MSYS2's `mingw64` trees. Invariant #1 held **by construction**, no golden
+  values needed: the predicate is purely additive (no `/usr/` path changes membership, Linux
+  cross-headers under `/usr/x86_64-w64-mingw32` were already matched), and Windows had zero
+  existing header-set keys to drift (the hash was empty for every TU since the empty-set fix).
+  Verified 2026-07-21 on the loopback grid: header set stored, PCH built
+  (`SUCO_PCH_MIN_USES=1`), `PCH HIT` on a second TU with the same headers, stripped payload
+  ~26 KB, L2 cache hit on recompile — and provenance intact: a grid-compiled `__LINE__` probe
+  returns its true line (`mov $0x7` byte-identical to the native object) and the COFF file
+  symbol matches native.
+  **Known cosmetic issue:** the worker's compile emits `warning: ... linemarker ignored due to
+  incorrect nesting` for the TU's own return-markers (their push counterparts are stripped with
+  the header text). Provenance is proven unaffected. Unknown whether Linux shows the same —
+  check a Linux worker log before hunting it.
 - **Resolved: `resolve_bin_path` now resolves bare compiler names on Windows.** It shelled out to
   `which` (does not exist on Windows) and its absolute-path check only knew POSIX forms. Now walks
   `PATH` directly on Windows, trying `name.exe` first; POSIX still uses `which`, unchanged.

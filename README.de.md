@@ -213,11 +213,11 @@ cmake --build build --config Release
 ```
 
 > 🪟 **Windows-Hinweise:** Clients mit `SUCO_NO_DAEMON=1` starten (der IPC-Daemon nutzt
-> Unix-Sockets); die Header-Set/PCH-Optimierung ist derzeit Linux-only, Windows-Clients senden
-> vollständige präprozessierte Quellen (korrekt, etwas mehr Netzwerklast). Windows-Clients
-> dispatchen MinGW-Jobs unter dem zielqualifizierten Namen `x86_64-w64-mingw32-g++` — Linux-Worker
-> können sie bedienen, sobald dort `mingw-w64` installiert ist; Nodes ohne werden sicher
-> übersprungen (der Client kompiliert lokal).
+> Unix-Sockets). Die Header-Set/PCH-Optimierung funktioniert unter Windows: MinGW-System-Header
+> werden erkannt, Worker cachen den Header-Text, bauen PCHs und bedienen gestrippte TUs (~KB statt
+> MB Payload). Windows-Clients dispatchen MinGW-Jobs unter dem zielqualifizierten Namen
+> `x86_64-w64-mingw32-g++` — Linux-Worker können sie bedienen, sobald dort `mingw-w64` installiert
+> ist; Nodes ohne werden sicher übersprungen (der Client kompiliert lokal).
 
 ### Installer (Linux)
 
