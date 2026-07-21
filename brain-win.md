@@ -233,6 +233,11 @@ Generates 6 executable targets in `build\`:
 
 The local grid run was verified on 2026-07-21.
 
+> ⚠️ **This log predates the two dispatch fixes** (see Handoff Notes). The `header-set state stale`
+> warning and the local fallback in run 1 below are the bug, not expected behaviour — at this point
+> nothing was actually compiled on the worker. Kept as-is because it is the evidence the diagnosis
+> was built from.
+
 ### 1. Starting the Coordinator
 ```
 [2026-07-21 08:40:14] [INFO] Loading configuration...
@@ -337,17 +342,53 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
 
 ## 📋 Handoff Notes & Windows Specifics
 
-- **⚠️ Grid dispatch is NOT yet verified on Windows** (open bug, highest-value next step). In the
-  validation run above, the remote compile succeeded and the object was uploaded — and the client
-  *then* discarded it with `Grid header-set state stale — recompiling locally`, uploading the same
-  hash a second time from the local compile. That fallback is invariant #3 working as designed
-  (a worker's bad state must never fail a build), so the build is correct — but it means Windows
-  currently gets **cache benefit only, no distribution**. The warm run's `Cache hit` proves the
-  cache path, not the grid path. To reproduce: run a second worker (or force a cache miss) and
-  watch whether the header-set claim ever holds. Suspicion: the header-set is registered under a
-  path spelling the Windows worker reports differently than the client claims it (`\` vs `/`,
-  drive-letter case) — compare the claimed vs. stored header-set key before touching hashing code
-  (see invariant #1: cache keys must not drift).
+- **Grid dispatch was broken on Windows by two independent bugs — both fixed, now verified.**
+  The `Grid header-set state stale — recompiling locally` warning in the validation log above was
+  not a stale-cache hiccup: Windows had *never* distributed a single TU. Both bugs are worth
+  knowing about, because each one masqueraded as "it works, just slowly".
+
+  1. **The header-set split only recognised `/usr/` paths** (`header_set_hasher.cpp`). MinGW
+     headers live under `C:/Qt/Tools/...`, so no path ever matched, `header_paths` stayed empty and
+     neither `header_set_source` nor `stripped_source` was filled in. The hash, however, is fed
+     from flags/compiler/toolchain regardless, so it came back **non-empty** — and `job_sender`
+     reads a non-empty hash as "this TU has a header set" and swaps the source for the (empty)
+     stripped one. The worker received a header-set hash, no header text and an empty TU, and
+     could only answer `HEADER_SET_MISSING` (-5). Fix: return `""` when no system headers were
+     found, which switches the header-set machinery off for that TU and ships the full source.
+     This was latent on Linux too — any TU without system headers hit the same path.
+  2. **The worker had no shell on Windows** (`job_executor.cpp`). The compile command is built as
+     a shell string (`cd <job dir> && <compiler> ...`); the POSIX branch runs it through `sh -c`,
+     the Windows branch handed it straight to `CreateProcessA`, which took the first token
+     literally and looked for an executable named `cd` — a cmd.exe builtin that does not exist as
+     one. Every remote job died with `CreateProcess failed` → exit -1. Fix: prefix `cmd.exe /c`,
+     mirroring `sh -c`, plus `cd /d` so a TEMP on another drive actually switches volume.
+
+  Bug 2 was invisible until bug 1 was fixed — the -5 fired before the compiler was ever started.
+  Verified 2026-07-21 on a one-worker local grid: `Direct dispatch OK`, worker `Exit: 0`, no local
+  fallback, and `nm` on the resulting object shows the expected mangled symbol from the *edited*
+  source (proving the object came from that compile and not from cache).
+
+  **Why this hid for so long:** invariant #3 (a worker's bad state must never fail a build) did
+  exactly its job — every failure was silently absorbed into a correct local compile. Correct
+  builds, zero distribution, and nothing in the exit codes to notice. When judging Windows grid
+  performance, `Cache hit` in the client log proves the **cache** path only; the grid path is
+  proven by `Direct dispatch OK` plus a worker-side `Exit: 0`.
+- **Open: header sets / PCH are still off on Windows.** The fix above makes Windows ship full
+  sources, which distributes correctly but forfeits the header-set and PCH optimisation, because
+  the `/usr/` test still never matches MinGW paths. Teaching the split about
+  `C:/Qt/Tools/...`-style system headers is the remaining win. Treat it as a cache-key change:
+  record golden `hs_hash` values plus resulting objects before and after (invariant #1). Note
+  `content_hash` is computed in `job_sender` *before* `HeaderSetHasher::compute_hash` runs, so the
+  object cache key itself cannot move — only the header-set key can.
+- **Open: `resolve_bin_path` does not resolve a bare `g++` on Windows** — `toolchain_packer.cpp`
+  logs `Could not resolve compiler path for: g++` and returns an empty `ToolchainInfo`, so
+  toolchain packing is inert. Not fatal (dispatch works without it), likely a missing `.exe`
+  suffix / PATH search.
+- **Open: client logs a cache store that the coordinator never recorded.** In the pre-fix run the
+  client printed `Coordinator stored cache entry successfully` for a remote compile that had
+  failed with -1, while the coordinator logged no store at that timestamp. Either the log is
+  optimistic or an empty object gets uploaded. Not yet understood — worth a look, since a
+  poisoned cache entry would be far worse than a failed dispatch.
 - **MSVC detection warning**: The client wrapper output `suco msvc_detector error: vswhere.exe nicht gefunden` can be ignored or silenced when working strictly in MinGW mode.
 - **Git version control**: The Windows workspace is a real clone — `origin` points at
   `github.com/MicBur/suco`, branch `main` tracks `origin/main`. No ZIP round-trips needed.
