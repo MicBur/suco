@@ -373,6 +373,30 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   builds, zero distribution, and nothing in the exit codes to notice. When judging Windows grid
   performance, `Cache hit` in the client log proves the **cache** path only; the grid path is
   proven by `Direct dispatch OK` plus a worker-side `Exit: 0`.
+- **Windows client → Linux grid: jobs now name the compiler by TARGET, not by host.**
+  `g++` means "produces objects for this machine", which breaks the moment a MinGW job is
+  assigned to a Linux worker: that worker compiles with its own `g++` and returns an **ELF**
+  object, which fails at link time with nothing pointing at the cause. The client therefore
+  dispatches MinGW jobs as `x86_64-w64-mingw32-g++` (`CompilerCommand::get_remote_compiler_name`),
+  the triple-qualified alias the mingw-w64 layout ships. Outcomes:
+  - Linux node **with** `mingw-w64` installed → correct PE object, cross-OS dispatch works.
+  - Linux node **without** it → the driver is not found, exit 127, which is already an
+    infrastructure signal (invariant #3) → the client recompiles locally. Correct, one wasted
+    round-trip.
+  - Windows worker → has the alias, unchanged.
+
+  **To actually use the Linux grid from Windows, the nodes need `apt install mingw-w64`.**
+  Without it every Windows job silently ends up local — correct, but zero distribution.
+  Deliberately limited to MinGW targets: qualifying Linux jobs as `x86_64-linux-gnu-g++` would
+  make every job depend on that alias existing on every node, and take a working grid down to
+  local-only compiles if it does not.
+
+  **Residual gap (the clean fix):** the scheduler still assigns workers by compiler *name* and
+  version only (`scheduler.cpp`) — it has `WorkerNode::os` but never reads it, and no target
+  triple crosses the wire. So an incompatible worker can still be picked; it just fails safely
+  now instead of returning a wrong-format object. Doing it properly means the worker advertising
+  a target triple per compiler and the job carrying the required one — a wire-format change, so
+  coordinator and all workers must be upgraded in lockstep.
 - **Open: header sets / PCH are still off on Windows.** The fix above makes Windows ship full
   sources, which distributes correctly but forfeits the header-set and PCH optimisation, because
   the `/usr/` test still never matches MinGW paths. Teaching the split about

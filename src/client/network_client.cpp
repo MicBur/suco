@@ -367,7 +367,7 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
     SUCO_LOG_INFO("Requesting remote compile for {}", cmd.source_file);
 
     // Reconstruct the compiler invocation command without local-only parameters
-    std::string remote_cmd = cmd.compiler_path;
+    std::string remote_cmd = cmd.get_remote_compiler_name();
     for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
         const auto& flag = cmd.other_flags[f];
         
@@ -929,7 +929,7 @@ bool NetworkClient::send_batch_compile_request(const std::vector<JobItem>& jobs)
     for (const auto& item : jobs) {
         const auto& cmd = item.cmd;
 
-        std::string remote_cmd = cmd.compiler_path;
+        std::string remote_cmd = cmd.get_remote_compiler_name();
         for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
             const auto& flag = cmd.other_flags[f];
             if (cmd.is_msvc) {
@@ -1257,7 +1257,7 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
     }
 
     // 2. Befehl rekonstruieren (identisch zu try_compile)
-    std::string remote_cmd = cmd.compiler_path;
+    std::string remote_cmd = cmd.get_remote_compiler_name();
     for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
         const auto& flag = cmd.other_flags[f];
         if (cmd.is_msvc) {

@@ -128,6 +128,11 @@ ignore `SIGTERM` → `SIGKILL` when needed.
   "same state" for the project. As of 2026-07-21 the Windows box is a real clone with `origin`
   set (it used to be a ZIP copy), so no more manual file shuttling.
 - Write your side into `brain-win.md`. Same rule as here: **no secrets — the repo is public.**
+- **To serve Windows clients, the Linux nodes need `apt install mingw-w64`.** A MinGW job is
+  dispatched as `x86_64-w64-mingw32-g++` (naming the target, not the host — a node's own `g++`
+  would return an ELF object that only fails at link time). A node without the cross compiler
+  exits 127, which invariant #3 turns into a local compile: correct, but zero distribution for
+  that client. Linux→Linux jobs are unaffected, they still dispatch as plain `g++`.
 - The Windows grid works but ships **full sources**: header sets / PCH stay off there, because the
   system-header split still only matches `/usr/`. Teaching it MinGW paths is the open win — and it
   moves the header-set key, so it is an invariant #1 change (golden values before/after). The
