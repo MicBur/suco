@@ -130,8 +130,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies via vcpkg
+        # sqlite3 was missing since the coordinator gained its SQLite HistoryWriter
+        # (2.1.0) — find_package(SQLite3 REQUIRED) made configure fail ever since,
+        # silently, because this job is continue-on-error.
         run: |
-          vcpkg install openssl zstd --triplet x64-windows
+          vcpkg install openssl zstd sqlite3 --triplet x64-windows
 
       - name: Configure CMake
         run: |
