@@ -26,6 +26,11 @@ speed, but be installable in 30 seconds via `apt`.**
 - Public repo: **github.com/MicBur/suco**, all nodes on **0.9.2**, grid healthy (4 workers / 13 slots).
 - APT repo built + signed by GitHub Actions on every `v*` tag → GitHub Pages. CI is green.
 - Docs: `docs/INSTALL.md` (full setup), `docs/INSTALL-apt.md` (apt + maintainer).
+- **Branch `windows-mingw` is committed locally on the Windows box but NOT yet pushed** (4 commits:
+  the MinGW build, two dispatch fixes, docs). One of them touches shared client code
+  (`header_set_hasher.cpp`, see invariant #8) and is a real Linux fix too, so it wants CI and a
+  review — not a fast-forward onto main. Until it is pushed, `origin/main` does not build on
+  Windows and still carries the header-set bug.
 
 ---
 
@@ -65,6 +70,23 @@ speed, but be installable in 30 seconds via `apt`.**
 7. **Measurement hygiene:** benchmark only on an idle machine. Background apps (browser, k3s, an IDE)
    steal ~1.5 cores and inflate cold *and especially warm* numbers. The bench script waits for
    load < 1.5. Loaded runs looked 40–60s slower — not a regression.
+8. **A hash is not a presence flag.** `HeaderSetHasher::compute_hash` digests flags + compiler
+   version + toolchain hash regardless of whether any system header was found, so it returned a
+   non-empty `header_set_hash` for a TU with *no* header set. All three callers read "non-empty
+   hash" as "this TU has a header set" and swap in `stripped_source`, which the same function only
+   fills when `header_paths` is non-empty → the worker receives a header-set hash, no header text
+   and an EMPTY TU, and can only answer `-5`. Fixed 2026-07-21 (return `""` when `header_paths` is
+   empty). **Not a Windows-only bug** — on Linux any TU without system headers reaches it; on
+   Windows it was every TU, because the split recognises system headers by a `/usr/` prefix and
+   MinGW's live under `C:/Qt/Tools/...`.
+9. **Invariant #3 hides TOTAL failure — so count the self-heals.** Because a worker's bad state is
+   absorbed into a correct local compile, "the grid distributes nothing" and "the grid is a bit
+   slow" are indistinguishable from the build's exit codes. The entire Windows port ran with
+   **zero** TUs compiled on a worker while every build succeeded; two independent bugs hid behind
+   one warning line, the second only reachable once the first was fixed. The self-heal is right and
+   must stay — but a fallback that is invisible is a fallback that is permanent. Judge distribution
+   by `Direct dispatch OK` plus a worker-side `Exit: 0`, never by a green build and never by
+   `Cache hit` (which proves only the cache path).
 
 ## Diagnostic discipline
 
@@ -103,7 +125,13 @@ ignore `SIGTERM` → `SIGKILL` when needed.
 ## For the Windows machine
 
 - `git clone`/`git pull` on the same repo keeps the **code** in sync — that is the reliable
-  "same state" for the project.
+  "same state" for the project. As of 2026-07-21 the Windows box is a real clone with `origin`
+  set (it used to be a ZIP copy), so no more manual file shuttling.
 - Write your side into `brain-win.md`. Same rule as here: **no secrets — the repo is public.**
+- The Windows grid works but ships **full sources**: header sets / PCH stay off there, because the
+  system-header split still only matches `/usr/`. Teaching it MinGW paths is the open win — and it
+  moves the header-set key, so it is an invariant #1 change (golden values before/after). The
+  object cache key cannot move: `content_hash` is computed in `job_sender` *before*
+  `HeaderSetHasher::compute_hash` runs.
 - Antigravity's own conversations/settings are not synced through this file; that's tied to the
   Antigravity account, not the git repo.
