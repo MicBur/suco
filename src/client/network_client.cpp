@@ -120,7 +120,10 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd,
         uint32_t hash_len = htonl(cmd.content_hash.size());
         uint32_t file_len = htonl(cmd.source_file.size());
         uint32_t tc_hash_len = htonl(cmd.toolchain_hash.size());
-        uint32_t req_comp_len = htonl(cmd.required_compiler.size());
+        // On the wire we advertise the DISPATCH id (target-qualified for MinGW), so
+        // the scheduler only picks workers that actually have the right driver.
+        const std::string req_comp = cmd.get_dispatch_compiler_id();
+        uint32_t req_comp_len = htonl(req_comp.size());
         uint32_t req_comp_ver_len = htonl(cmd.required_compiler_version.size());
         uint32_t hs_hash_len = htonl(cmd.header_set_hash.size());
 
@@ -132,7 +135,7 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd,
             !suco::send_all(sock_, &tc_hash_len, 4) ||
             (!cmd.toolchain_hash.empty() && !suco::send_all(sock_, cmd.toolchain_hash.c_str(), cmd.toolchain_hash.size())) ||
             !suco::send_all(sock_, &req_comp_len, 4) ||
-            (!cmd.required_compiler.empty() && !suco::send_all(sock_, cmd.required_compiler.c_str(), cmd.required_compiler.size())) ||
+            (!req_comp.empty() && !suco::send_all(sock_, req_comp.c_str(), req_comp.size())) ||
             !suco::send_all(sock_, &req_comp_ver_len, 4) ||
             (!cmd.required_compiler_version.empty() && !suco::send_all(sock_, cmd.required_compiler_version.c_str(), cmd.required_compiler_version.size())) ||
             !suco::send_all(sock_, &hs_hash_len, 4) ||
@@ -451,7 +454,9 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
     uint32_t cmd_len = htonl(remote_cmd.size());
     uint32_t file_len = htonl(cmd.source_file.size());
     uint32_t src_len_net = htonl(src_len);
-    uint32_t req_comp_len = htonl(cmd.required_compiler.size());
+    // Dispatch id on the wire (target-qualified for MinGW) — see PACKET_CACHE_QUERY.
+    const std::string req_comp = cmd.get_dispatch_compiler_id();
+    uint32_t req_comp_len = htonl(req_comp.size());
     uint32_t req_comp_ver_len = htonl(cmd.required_compiler_version.size());
     uint32_t tc_hash_len = htonl(cmd.toolchain_hash.size());
     uint32_t hs_hash_len = htonl(cmd.header_set_hash.size());
@@ -466,7 +471,7 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
         !suco::send_all(sock_, &src_len_net, 4) ||
         (src_len > 0 && !suco::send_all(sock_, src_data, src_len)) ||
         !suco::send_all(sock_, &req_comp_len, 4) ||
-        (!cmd.required_compiler.empty() && !suco::send_all(sock_, cmd.required_compiler.c_str(), cmd.required_compiler.size())) ||
+        (!req_comp.empty() && !suco::send_all(sock_, req_comp.c_str(), req_comp.size())) ||
         !suco::send_all(sock_, &req_comp_ver_len, 4) ||
         (!cmd.required_compiler_version.empty() && !suco::send_all(sock_, cmd.required_compiler_version.c_str(), cmd.required_compiler_version.size())) ||
         !suco::send_all(sock_, &tc_hash_len, 4) ||

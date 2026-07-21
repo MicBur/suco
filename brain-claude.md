@@ -132,11 +132,13 @@ ignore `SIGTERM` → `SIGKILL` when needed.
   "same state" for the project. As of 2026-07-21 the Windows box is a real clone with `origin`
   set (it used to be a ZIP copy), so no more manual file shuttling.
 - Write your side into `brain-win.md`. Same rule as here: **no secrets — the repo is public.**
-- **To serve Windows clients, the Linux nodes need `apt install mingw-w64`.** A MinGW job is
-  dispatched as `x86_64-w64-mingw32-g++` (naming the target, not the host — a node's own `g++`
-  would return an ELF object that only fails at link time). A node without the cross compiler
-  exits 127, which invariant #3 turns into a local compile: correct, but zero distribution for
-  that client. Linux→Linux jobs are unaffected, they still dispatch as plain `g++`.
+- **To serve Windows clients, a Linux node needs BOTH `apt install mingw-w64` AND a worker build
+  that advertises it** (probe added 2026-07-21; ships with the next release). The scheduler now
+  matches Windows jobs by a target-qualified dispatch id (`x86_64-w64-mingw32-g++`) against the
+  worker's toolchain map — no protocol change, the field was always a free-form string, so old
+  workers are simply never selected and the client compiles locally. Version gate applies: the
+  node's cross-g++ major must match the client's local g++ major (13 here; Debian bookworm ships
+  12 → skipped safely). Linux→Linux jobs are unaffected, they still dispatch as plain `g++`.
 - **Header sets / PCH work on Windows now** (2026-07-21): the system-header predicate also accepts
   paths containing `mingw`. Invariant #1 held by construction — additive predicate (no `/usr/`
   path changes membership) and Windows had zero existing header-set keys. Verified end-to-end on

@@ -391,12 +391,25 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   make every job depend on that alias existing on every node, and take a working grid down to
   local-only compiles if it does not.
 
-  **Residual gap (the clean fix):** the scheduler still assigns workers by compiler *name* and
-  version only (`scheduler.cpp`) — it has `WorkerNode::os` but never reads it, and no target
-  triple crosses the wire. So an incompatible worker can still be picked; it just fails safely
-  now instead of returning a wrong-format object. Doing it properly means the worker advertising
-  a target triple per compiler and the job carrying the required one — a wire-format change, so
-  coordinator and all workers must be upgraded in lockstep.
+  **Resolved — and WITHOUT the feared lockstep:** the scheduler now matches Windows jobs to
+  capable workers up front. The insight: `required_compiler` already crosses the wire as a free-
+  form string and is already matched against the worker's open name→version toolchain map — so no
+  protocol change was ever needed. Two pieces (2026-07-21):
+  - Client serializes a *dispatch id* (`CompilerCommand::get_dispatch_compiler_id`) into the
+    cache query and job request: target-qualified (`x86_64-w64-mingw32-g++`) for MinGW targets,
+    the plain name otherwise. The in-process `required_compiler` member stays the LOCAL name on
+    purpose — it doubles as the feature-flag selector for `-fdirectives-only`/`-ffile-prefix-map`.
+  - Worker probes and advertises `x86_64-w64-mingw32-g++/gcc` in its toolchain map
+    (`toolchain_detector.cpp`) — present on Windows toolchains and on Linux nodes with
+    `mingw-w64` installed.
+  Rollout is graceful: old 0.9.2 workers never advertise the qualified name → scheduler finds no
+  worker → the client compiles locally (correct, no wasted dispatch). Verified on the loopback
+  grid: worker registers `x86_64-w64-mingw32-g++=13.1.0`, scheduler selects it, compile succeeds.
+  **Node enablement checklist (in this order):** the Linux nodes need (1) `apt install mingw-w64`
+  AND (2) a worker build containing the new probe (next release) — either alone does nothing.
+  Also note the version gate: the scheduler's major-version check compares the client's local
+  g++ (13.x here) against the node's cross g++; Debian bookworm ships mingw-w64 GCC 12 → skipped
+  (safe, local compile). The majors must line up for real cross-dispatch.
 - **Resolved: header sets / PCH now work on Windows.** The system-header predicate accepts paths
   containing `mingw` in addition to the `/usr/` prefix (`header_set_hasher.cpp`) — covers Qt's
   `mingw1310_64` and MSYS2's `mingw64` trees. Invariant #1 held **by construction**, no golden
@@ -428,6 +441,9 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   failed job until the grid runs dry. Only the *store* is conditional, never the report.
   Verified 2026-07-21 with a TU that fails to compile: honest log line, exit 1 propagated to the
   caller, no object written, re-run is still a cache MISS, and grid utilisation back to 0/4 slots.
+- **Minor: the worker's header/PCH cache lands under `/tmp/.cache/suco/headers` on Windows** —
+  a POSIX-style path resolved against the current drive root. It works (PCH store + HIT proven),
+  but it's the wrong location; should use `%LOCALAPPDATA%` like the coordinator cache does.
 - **MSVC detection warning**: The client wrapper output `suco msvc_detector error: vswhere.exe nicht gefunden` can be ignored or silenced when working strictly in MinGW mode.
 - **Git version control**: The Windows workspace is a real clone — `origin` points at
   `github.com/MicBur/suco`, branch `main` tracks `origin/main`. No ZIP round-trips needed.

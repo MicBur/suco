@@ -602,6 +602,17 @@ std::string CompilerCommand::get_remote_compiler_name() const {
     return compiler_path;
 }
 
+std::string CompilerCommand::get_dispatch_compiler_id() const {
+    if (is_msvc) return required_compiler;
+    const std::string triple = get_target_architecture();
+    if (triple.find("mingw") == std::string::npos) return required_compiler;
+    // Same mapping as get_remote_compiler_name: only the ambiguous GCC driver
+    // names get qualified; anything else is passed through untouched.
+    if (required_compiler == "g++" || required_compiler == "c++") return triple + "-g++";
+    if (required_compiler == "gcc" || required_compiler == "cc")  return triple + "-gcc";
+    return required_compiler;
+}
+
 std::string CompilerCommand::get_compiler_version() const {
     auto meta = query_compiler_metadata(compiler_path, is_msvc);
     return meta.version;

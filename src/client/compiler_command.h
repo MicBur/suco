@@ -99,6 +99,24 @@ struct CompilerCommand {
     std::string get_remote_compiler_name() const;
 
     /**
+     * @brief The compiler NAME to advertise in cache queries and job requests.
+     *
+     * This is what the coordinator's scheduler matches against a worker's advertised
+     * toolchain map, so for MinGW targets it must be the target-qualified name a
+     * suitable worker actually advertises (x86_64-w64-mingw32-g++) — a worker without
+     * that driver is then skipped up front instead of being assigned a job it can only
+     * answer with exit 127. Everything else keeps the plain name.
+     *
+     * Wire-compatible with 0.9.2: the field is a free-form string; old workers simply
+     * never advertise the qualified name, so the scheduler finds no worker and the
+     * client compiles locally — same net behavior as today, minus the wasted dispatch.
+     * The in-process required_compiler member intentionally stays the LOCAL name
+     * ("g++"): it doubles as the feature-flag selector for -fdirectives-only and
+     * -ffile-prefix-map, which must not change with the dispatch target.
+     */
+    std::string get_dispatch_compiler_id() const;
+
+    /**
      * @brief Constructs the normalized string payload used for generating the cache key hash.
      */
     std::string get_hash_input() const;
