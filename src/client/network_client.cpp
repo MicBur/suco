@@ -1394,8 +1394,25 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         return result;
     }
 
-    // 5. Verbindung zum Coordinator aufbauen, um das Ergebnis hochzuladen
-    SUCO_LOG_INFO("Uploading compiled binary to coordinator cache for hash {}", cmd.content_hash);
+    // 5. Report the result to the coordinator.
+    //
+    // This runs even when the remote compile FAILED, and must: the same
+    // PACKET_CACHE_STORE releases the worker slot reserved during the cache-miss
+    // query (client_handler), so skipping it on failure would leak one slot per
+    // failed job until the grid ran dry. Only the STORE half is conditional —
+    // the coordinator caches nothing unless exit_code == 0.
+    //
+    // Say which of the two is happening. This used to announce an upload and then
+    // report "stored successfully" for any acknowledged packet, so a worker that
+    // failed every single job still produced a log that read like a healthy cache
+    // fill — which is exactly how the Windows dispatch outage stayed invisible.
+    const bool cacheable = (result.exit_code == 0);
+    if (cacheable) {
+        SUCO_LOG_INFO("Uploading compiled binary to coordinator cache for hash {}", cmd.content_hash);
+    } else {
+        SUCO_LOG_INFO("Remote compile of {} failed (exit {}) — reporting to coordinator to release "
+                      "the worker slot; not cached", cmd.source_file, result.exit_code);
+    }
     if (!connect_to_coordinator()) {
         SUCO_LOG_WARNING("Failed to connect to coordinator to store cache entry");
         return result;
@@ -1445,7 +1462,9 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         uint32_t ack_type_net = 0;
         if (suco::read_all(sock_, &ack_type_net, 4)) {
             uint32_t ack_type = ntohl(ack_type_net);
-            if (ack_type == suco::PACKET_TOOLCHAIN_ACK) {
+            // The ACK acknowledges the packet, not a store — the coordinator sends it
+            // whether or not it cached anything. Only claim a store when one was possible.
+            if (ack_type == suco::PACKET_TOOLCHAIN_ACK && cacheable) {
                 SUCO_LOG_INFO("Coordinator stored cache entry successfully.");
             }
         }

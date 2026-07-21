@@ -384,11 +384,18 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   logs `Could not resolve compiler path for: g++` and returns an empty `ToolchainInfo`, so
   toolchain packing is inert. Not fatal (dispatch works without it), likely a missing `.exe`
   suffix / PATH search.
-- **Open: client logs a cache store that the coordinator never recorded.** In the pre-fix run the
-  client printed `Coordinator stored cache entry successfully` for a remote compile that had
-  failed with -1, while the coordinator logged no store at that timestamp. Either the log is
-  optimistic or an empty object gets uploaded. Not yet understood — worth a look, since a
-  poisoned cache entry would be far worse than a failed dispatch.
+- **Resolved (was: "client logs a store the coordinator never recorded"): the cache is safe, the
+  log was lying.** The coordinator caches only `exit_code == 0` (`client_handler.cpp`,
+  PACKET_CACHE_STORE), and the client does send the real exit code — so a failed compile was never
+  cached. What the client got back was `PACKET_TOOLCHAIN_ACK`, which acknowledges the *packet*, not
+  a store, and it reported "Coordinator stored cache entry successfully" for any ACK. A worker
+  failing every job therefore produced a log that read like a healthy cache fill. Fixed: the client
+  now distinguishes the two cases.
+  **Do not "optimise" this by skipping the upload on failure** — the same PACKET_CACHE_STORE
+  releases the worker slot reserved during the cache-miss query, so skipping it leaks one slot per
+  failed job until the grid runs dry. Only the *store* is conditional, never the report.
+  Verified 2026-07-21 with a TU that fails to compile: honest log line, exit 1 propagated to the
+  caller, no object written, re-run is still a cache MISS, and grid utilisation back to 0/4 slots.
 - **MSVC detection warning**: The client wrapper output `suco msvc_detector error: vswhere.exe nicht gefunden` can be ignored or silenced when working strictly in MinGW mode.
 - **Git version control**: The Windows workspace is a real clone — `origin` points at
   `github.com/MicBur/suco`, branch `main` tracks `origin/main`. No ZIP round-trips needed.
