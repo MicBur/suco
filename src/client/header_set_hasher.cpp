@@ -153,11 +153,29 @@ std::string HeaderSetHasher::compute_hash(CompilerCommand& cmd) {
         }
     }
 
-    if (!header_paths.empty()) {
-        cmd.header_set_source = header_set_source;
-        cmd.stripped_source = stripped_source;
+    // No system headers found — there is no header set, so say so instead of
+    // returning a hash over the flags alone. The hash below is fed from flags,
+    // compiler version and toolchain even when header_paths is empty, so it comes
+    // back non-empty regardless; job_sender then takes that as "this TU has a header
+    // set" and swaps preprocessed_source for the stripped source, which was never
+    // filled in — the worker receives a header-set hash, no header text and an EMPTY
+    // TU, and can only answer HEADER_SET_MISSING (-5). Every job, every time.
+    // That is how it behaves on Windows today: the split below only recognises
+    // headers under /usr/, so MinGW's C:/Qt/Tools/... headers never match and the
+    // grid path is dead — the -5 self-heal quietly recompiles everything locally.
+    // Returning "" here keeps the header-set machinery switched off for this TU and
+    // ships the full preprocessed source, which is what the pre-header-set path did.
+    // Cache keys are unaffected: content_hash is computed in job_sender before this
+    // function runs.
+    if (header_paths.empty()) {
+        cmd.header_set_hash.clear();
+        return "";
     }
-    
+
+    cmd.header_set_source = header_set_source;
+    cmd.stripped_source = stripped_source;
+
+
     // Create cryptographic hash context
     EVP_MD_CTX* hash_ctx = EVP_MD_CTX_new();
     if (!hash_ctx) return "";
