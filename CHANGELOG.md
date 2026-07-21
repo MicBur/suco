@@ -2,6 +2,19 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Native Windows/MinGW port**: all six binaries (`suco`, `suco-cl`, `suco-cl++`, `suco-coordinator`, `suco-worker`, `suco-daemon`) build and run the grid natively under MinGW-w64 GCC (Qt toolchain or MSYS2) — no WSL, no MSVC. Includes OpenSSL 1.1.1 keygen fallback, POSIX→Win32 replacements (`mkdtemp`, process status macros, socket shutdown), and a system-zstd CMake fallback for environments without a vendored build.
+- **Windows/MinGW CI job**: blocking `windows-latest` (MSYS2) job that builds all targets and runs the same loopback-grid smoke test as Linux (dispatch, worker compile, cache store, cache hit).
+- **Target-qualified dispatch**: Windows clients dispatch MinGW jobs as `x86_64-w64-mingw32-g++` instead of `g++`, so a Linux worker either cross-compiles correctly (with `mingw-w64` installed) or is skipped safely via the existing exit-127 infrastructure fallback — instead of returning an ELF object that fails at link time.
+
+### Fixed
+- **Header-set hash claimed a set that did not exist**: `HeaderSetHasher::compute_hash` returned a non-empty hash even when no system headers were found (the digest also covers flags/compiler/toolchain), making callers ship an empty stripped TU; the worker could only answer `HEADER_SET_MISSING`. On Windows this affected every TU (the header split only recognised `/usr/` paths) and silently disabled all distribution; on Linux it was reachable by any TU without system headers. The hash is now empty when the set is.
+- **Worker had no shell on Windows**: compile commands (`cd <dir> && <compiler> …`) were passed to `CreateProcessA` verbatim, which looked for an executable named `cd`; every remote job failed with exit -1 and was absorbed by the local-fallback path. Commands now run through `cmd.exe /c` (mirroring `sh -c`), with `cd /d` for cross-drive temp directories.
+- **Client reported a cache store that never happened**: after a failed remote compile the client still logged "Coordinator stored cache entry successfully" on any packet ACK, making a fully failing worker look like a healthy cache fill. The store report is now tied to a cacheable (exit 0) result; the packet itself is still always sent, because it doubles as the worker-slot release.
+- **`resolve_bin_path` on Windows**: shelled out to nonexistent `which`, so bare compiler names (and drive-letter paths) never resolved and toolchain packing was inert. Now walks `PATH` directly (with `.exe` resolution); POSIX unchanged.
+
 ## [2.1.0] - 2026-07-07
 
 ### Added
