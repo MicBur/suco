@@ -27,7 +27,6 @@ nohup.out
 CLAUDE.md
 ROADMAP-IB.md
 FIX_REPORT.md
-brain-claude.md
 brain-ag.md
 benchmark_results.md
 benchmarks/
@@ -55,3 +54,5 @@ run_massive_benchmark.sh
 run_massive_benchmark.ps1
 generate_benchmark.ps1
 d??comp?scratch?qt_test/
+
+brain-claude.legacy.local
