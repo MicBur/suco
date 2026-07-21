@@ -404,10 +404,10 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   record golden `hs_hash` values plus resulting objects before and after (invariant #1). Note
   `content_hash` is computed in `job_sender` *before* `HeaderSetHasher::compute_hash` runs, so the
   object cache key itself cannot move — only the header-set key can.
-- **Open: `resolve_bin_path` does not resolve a bare `g++` on Windows** — `toolchain_packer.cpp`
-  logs `Could not resolve compiler path for: g++` and returns an empty `ToolchainInfo`, so
-  toolchain packing is inert. Not fatal (dispatch works without it), likely a missing `.exe`
-  suffix / PATH search.
+- **Resolved: `resolve_bin_path` now resolves bare compiler names on Windows.** It shelled out to
+  `which` (does not exist on Windows) and its absolute-path check only knew POSIX forms. Now walks
+  `PATH` directly on Windows, trying `name.exe` first; POSIX still uses `which`, unchanged.
+  The `Could not resolve compiler path for: g++` error is gone and toolchain packing works.
 - **Resolved (was: "client logs a store the coordinator never recorded"): the cache is safe, the
   log was lying.** The coordinator caches only `exit_code == 0` (`client_handler.cpp`,
   PACKET_CACHE_STORE), and the client does send the real exit code — so a failed compile was never

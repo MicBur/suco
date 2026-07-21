@@ -26,11 +26,15 @@ speed, but be installable in 30 seconds via `apt`.**
 - Public repo: **github.com/MicBur/suco**, all nodes on **0.9.2**, grid healthy (4 workers / 13 slots).
 - APT repo built + signed by GitHub Actions on every `v*` tag → GitHub Pages. CI is green.
 - Docs: `docs/INSTALL.md` (full setup), `docs/INSTALL-apt.md` (apt + maintainer).
-- **Branch `windows-mingw` is committed locally on the Windows box but NOT yet pushed** (4 commits:
-  the MinGW build, two dispatch fixes, docs). One of them touches shared client code
-  (`header_set_hasher.cpp`, see invariant #8) and is a real Linux fix too, so it wants CI and a
-  review — not a fast-forward onto main. Until it is pushed, `origin/main` does not build on
-  Windows and still carries the header-set bug.
+- **Branch `windows-mingw` is pushed and CI-green (2026-07-21)** — including the full Linux battery
+  (smoke, cache-correctness, chaos, ASan/UBSan) over the shared-code fixes (`header_set_hasher.cpp`,
+  see invariant #8), and a NEW blocking Windows/MinGW CI job (MSYS2) that runs the same smoke test:
+  loopback grid, dispatch via cmd.exe, cache hit. PR onto main is the next step; the CI push
+  trigger temporarily includes `windows-mingw` — drop after merge. Until merged, `origin/main`
+  does not build on Windows and still carries the header-set bug.
+- The old best-effort **Windows MSVC CI job was already red on main** before this branch existed
+  (vcpkg configure failure, `continue-on-error` so nothing noticed). Not touched here; either fix
+  it or retire it in favour of the MinGW job, which actually tests the grid.
 
 ---
 
