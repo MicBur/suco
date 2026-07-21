@@ -32,7 +32,20 @@ std::unordered_map<socket_t, SSL*> g_reg;
 // only — peer identity is established by the existing HMAC handshake, so we do
 // not persist or distribute this cert.
 bool make_self_signed(SSL_CTX* ctx) {
-    EVP_PKEY* pkey = EVP_RSA_gen(2048);
+    EVP_PKEY* pkey = nullptr;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    pkey = EVP_RSA_gen(2048);
+#else
+    EVP_PKEY_CTX* pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
+    if (pkey_ctx) {
+        if (EVP_PKEY_keygen_init(pkey_ctx) > 0) {
+            if (EVP_PKEY_CTX_set_rsa_keygen_bits(pkey_ctx, 2048) > 0) {
+                EVP_PKEY_keygen(pkey_ctx, &pkey);
+            }
+        }
+        EVP_PKEY_CTX_free(pkey_ctx);
+    }
+#endif
     if (!pkey) return false;
     X509* x509 = X509_new();
     if (!x509) { EVP_PKEY_free(pkey); return false; }

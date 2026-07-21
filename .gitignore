@@ -1,3 +1,6 @@
+# ---- vendored sources built locally (Windows/MinGW zstd) ----
+thirdparty/
+
 # ---- build artifacts ----
 build/
 build_*/
@@ -46,6 +49,7 @@ scripts/enable_auth.sh
 # (removed overbroad d*/ — matched docs/)
 test.cpp
 test.o
+test_compile.cpp
 benchmark_large.cpp
 benchmark_large.obj
 

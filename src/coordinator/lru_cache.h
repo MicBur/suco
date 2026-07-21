@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <fstream>
+#include <cstdlib>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -39,11 +40,9 @@ private:
 #ifdef _WIN32
         // Under Windows, expand %LOCALAPPDATA%
         if (path.find("%LOCALAPPDATA%") != std::string::npos) {
-            char* local_app_data = nullptr;
-            size_t len = 0;
-            if (_dupenv_s(&local_app_data, &len, "LOCALAPPDATA") == 0 && local_app_data != nullptr) {
+            const char* local_app_data = std::getenv("LOCALAPPDATA");
+            if (local_app_data != nullptr) {
                 std::string expanded(local_app_data);
-                free(local_app_data);
                 std::string rest = path.substr(std::string("%LOCALAPPDATA%").size());
                 return expanded + rest;
             }

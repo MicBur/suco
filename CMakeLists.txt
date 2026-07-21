@@ -33,10 +33,17 @@ endif()
 # Find zstd for compression
 if(WIN32 AND NOT CMAKE_TOOLCHAIN_FILE)
     add_library(zstd::libzstd_static STATIC IMPORTED)
-    set_target_properties(zstd::libzstd_static PROPERTIES
-        IMPORTED_LOCATION "D:/zstd-build/lib/Release/zstd_static.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "D:/zstd-src-dir/zstd-1.5.6/lib"
-    )
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6")
+        set_target_properties(zstd::libzstd_static PROPERTIES
+            IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6/build/cmake/build/lib/libzstd.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/zstd-1.5.6/lib"
+        )
+    else()
+        set_target_properties(zstd::libzstd_static PROPERTIES
+            IMPORTED_LOCATION "D:/zstd-build/lib/Release/zstd_static.lib"
+            INTERFACE_INCLUDE_DIRECTORIES "D:/zstd-src-dir/zstd-1.5.6/lib"
+        )
+    endif()
 else()
     find_package(zstd CONFIG REQUIRED)
     if(NOT TARGET zstd::libzstd_static)
