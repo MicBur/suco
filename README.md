@@ -210,6 +210,8 @@ cmake --build build --config Release
 
 ### Installation (Linux)
 
+> 📖 **Full setup walkthrough (grid, verify, use, auth, troubleshooting): [docs/INSTALL.md](docs/INSTALL.md)**
+
 **Option A — `apt install suco` (recommended):** add the signed APT repo once, then install and upgrade
 like any system package.
 
