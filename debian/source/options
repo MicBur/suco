@@ -1,0 +1,9 @@
+tar-ignore = .git
+tar-ignore = .github
+tar-ignore = build
+tar-ignore = build_*
+tar-ignore = thirdparty
+tar-ignore = *.o
+tar-ignore = *.deb
+tar-ignore = *.tar.*
+extend-diff-ignore = ^(build|build_msvc|thirdparty)/
