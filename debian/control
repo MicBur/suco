@@ -1,0 +1,25 @@
+Source: suco
+Section: devel
+Priority: optional
+Maintainer: Michael Burzlaff <micbur1488@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               g++,
+               libssl-dev,
+               libzstd-dev,
+               libsqlite3-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/MicBur/suco
+Rules-Requires-Root: no
+
+Package: suco
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gcc, g++
+Description: distributed C/C++ compiler with content-addressed caching
+ SUCO is a distributed C/C++ compiler for LANs. It dispatches compile jobs
+ across a worker grid with content-addressed caching, so warm rebuilds are
+ served from cache and cold builds fan out over every node.
+ .
+ Ships the suco-cl/suco-cl++ compiler wrappers, the coordinator and worker
+ daemons, and a web dashboard. Services are installed disabled; the admin
+ enables each node's role with systemctl.

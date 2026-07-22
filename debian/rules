@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release
+
+# Units ship disabled — a fresh install must never silently join a running grid.
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start suco-coordinator.service
+	dh_installsystemd --no-enable --no-start suco-worker.service

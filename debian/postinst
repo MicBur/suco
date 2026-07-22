@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+cat <<'MSG'
+SUCO installed. Nothing was started automatically.
+  Compile node:   sudo systemctl enable --now suco-worker
+  Head node:      sudo systemctl enable --now suco-coordinator suco-worker
+  Dashboard:      http://<coordinator>:9001
+  Version:        suco --version
+MSG
+#DEBHELPER#
+exit 0

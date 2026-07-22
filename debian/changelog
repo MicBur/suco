@@ -1,0 +1,6 @@
+suco (0.10.5~ppa1) UNRELEASED; urgency=medium
+
+  * Initial PPA packaging. Regenerate this entry per Ubuntu series with
+    scripts/make_ppa_source.sh before uploading (sets version + distribution).
+
+ -- Michael Burzlaff <micbur1488@gmail.com>  Wed, 22 Jul 2026 21:59:30 +0200
