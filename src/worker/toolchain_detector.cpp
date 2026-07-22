@@ -85,6 +85,20 @@ ToolchainInfo ToolchainDetector::detect() {
         std::string cross_out = exec_command(std::string(cross) + " --version");
         if (!cross_out.empty()) {
             std::string ver = extract_version(cross_out);
+            if (ver.empty()) {
+                // Debian/Ubuntu's mingw-w64 reports a dotless version — "13-posix" /
+                // "13-win32" — which extract_version drops because it requires a dot.
+                // Use -dumpversion, whose output is just that bare token (no "x86_64"
+                // prefix to trip a leading-digit scan), and take its leading integer.
+                // The scheduler compares major versions only, so "13" vs a client's
+                // "13.1.0" still matches. Only these cross drivers reach this path —
+                // g++ / clang always print a dotted version, so they are unchanged.
+                std::string dv = exec_command(std::string(cross) + " -dumpversion");
+                for (char c : dv) {
+                    if (std::isdigit(static_cast<unsigned char>(c))) ver += c;
+                    else if (!ver.empty()) break;
+                }
+            }
             if (!ver.empty()) {
                 info.compilers[cross] = ver;
             }
