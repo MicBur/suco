@@ -76,6 +76,14 @@ speed, but be installable in 30 seconds via `apt`.**
 7. **Measurement hygiene:** benchmark only on an idle machine. Background apps (browser, k3s, an IDE)
    steal ~1.5 cores and inflate cold *and especially warm* numbers. The bench script waits for
    load < 1.5. Loaded runs looked 40–60s slower — not a regression.
+10. **Winsock `SO_RCVTIMEO`/`SO_SNDTIMEO` take a DWORD of MILLISECONDS, not a `struct timeval`.**
+    Passing a timeval makes Winsock read its `tv_sec` as milliseconds — a 30 s timeout becomes
+    30 ms. This kept the Windows client off every remote coordinator for the entire port: recvs
+    crossing the LAN aborted in ~30 ms as "handshake disconnect", while loopback (sub-30 ms) always
+    passed, so local smoke tests were green and the real grid was unreachable. **When a Windows
+    net path works on loopback but not across a LAN, suspect a timeout unit bug first.** A raw
+    `TcpClient` from PowerShell that gets a correct reply proves the server is fine and the bug is
+    client-side.
 8. **A hash is not a presence flag.** `HeaderSetHasher::compute_hash` digests flags + compiler
    version + toolchain hash regardless of whether any system header was found, so it returned a
    non-empty `header_set_hash` for a TU with *no* header set. All three callers read "non-empty

@@ -411,12 +411,20 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   the nodes' 0.9.2 workers don't contain the toolchain probe yet, so nothing is advertised
   until they're upgraded. Grid topology and access details: `brain-k3s.local.md` (machine-local,
   git-ignored).
-  **Real-grid contact test (Windows client → k3master coordinator, auth enabled, no secret on
-  the client):** handshake refused as designed, and the client degrades into a clean local
-  compile — verified 3× (exit 0, object produced, `Falling back all 1 jobs to local`). The very
-  FIRST cold contact (empty toolchain hash-cache, empty prep cache) ended exit -1 with NO object
-  once, and did not reproduce in 3 attempts including a fully cold retry. If a "first build after
-  install fails against an auth-enabled grid" report ever comes in, start here.
+  **Windows→Linux cross-dispatch VERIFIED end to end (2026-07-22).** A Windows client dispatched a
+  MinGW compile to node2, which cross-compiled with `x86_64-w64-mingw32-g++`; the returned object
+  is `pe-x86-64`, carries the TU's symbol, and links into a working `.exe`. First time the grid
+  path actually distributed a Windows compile.
+  **The final blocker was a Winsock timeout bug, not auth.** `connect_to_coordinator` set
+  `SO_RCVTIMEO`/`SO_SNDTIMEO` from a `struct timeval` on both platforms, but Winsock expects a
+  `DWORD` of milliseconds — it read the timeval's `tv_sec` (~30) as a **30 ms** timeout, so any
+  recv crossing the LAN (including the first read of the coordinator's HELLO reply) aborted in
+  ~30 ms and surfaced as "Coordinator disconnected during handshake". Only loopback (sub-30 ms)
+  ever worked — which is why every local smoke test passed while every real-grid attempt failed,
+  back to first contact. What cracked it: a raw PowerShell `TcpClient` got the full 76-byte HELLO
+  reply from the coordinator every time, proving coordinator + network were fine and the bug was
+  in the client binary. Fixed in `fix/windows-socket-timeout` (PR #3): DWORD-ms on Windows,
+  timeval on POSIX. The earlier "handshake refused / auth" theories were all wrong.
   **Minor found in the same test:** toolchain archiving fails on Windows with `tar: Couldn't open
   zstd: No such file or directory` — bsdtar wants a `zstd` executable on PATH. Non-fatal (the
   build continues), but toolchain upload is inert on Windows until fixed (ship zstd.exe or use
