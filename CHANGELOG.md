@@ -2,6 +2,11 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.10.5] - 2026-07-22
+
+### Performance
+- **Disabled Nagle's algorithm (TCP_NODELAY) on all grid sockets** — the dominant cold-build network latency. Every small request/response (HELLO handshake, HMAC auth, cache query, dispatch headers) was paying ~40ms of Nagle + delayed-ACK per round-trip; a bare cache query cost ~128ms where a LAN round-trip should be ~1ms. Set on both connect and accept sides (client↔coordinator, client↔worker). Also skip `gethostbyname` (~26ms first-call/process) for IP-literal coordinator hosts via `inet_pton`. Verified on the real grid: query+sched 128ms→78ms client-side alone (~50ms/TU); the server-side change completes the round-trip. Helps every path, daemon or not. Pure latency change, no cache-key or output impact. Adds `SUCO_TIMING`-gated `[NET]`/`[NET-CONNECT]` profiling logs.
+
 ## [0.10.4] - 2026-07-22
 
 ### Fixed

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(suco VERSION 0.10.4 LANGUAGES C CXX)
+project(suco VERSION 0.10.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
