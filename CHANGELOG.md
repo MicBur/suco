@@ -2,6 +2,11 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.10.2] - 2026-07-22
+
+### Fixed
+- **Windows client could not reach a remote coordinator**: `connect_to_coordinator` set `SO_RCVTIMEO`/`SO_SNDTIMEO` from a `struct timeval`, but Winsock expects a `DWORD` of milliseconds — it read the timeval's `tv_sec` (~30) as a 30 ms timeout, so any recv crossing the LAN (including the coordinator's HELLO reply) aborted in ~30 ms and looked like a handshake disconnect. Loopback (sub-30 ms) always worked, which is why local smoke tests passed while the real grid was unreachable. Windows now passes a DWORD of milliseconds; POSIX keeps the timeval. With this fix a Windows client cross-dispatches a MinGW compile to a Linux node end to end (verified: pe-x86-64 object returned and linked into a working .exe).
+
 ## [0.10.1] - 2026-07-22
 
 ### Fixed

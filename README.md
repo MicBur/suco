@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.10.1-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.10.2-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
   <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
