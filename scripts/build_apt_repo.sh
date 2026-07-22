@@ -19,6 +19,7 @@ set -euo pipefail
 DEB="${1:?path to suco_*.deb}"
 REPO="${2:?output repo dir}"
 KEYID="${3:-}"
+BASEURL="${4:-https://micbur.github.io/suco}"   # public URL the repo is served from
 
 command -v dpkg-scanpackages >/dev/null || { echo "need dpkg-dev (apt install dpkg-dev)"; exit 2; }
 command -v gpg >/dev/null || { echo "need gnupg"; exit 2; }
@@ -59,7 +60,31 @@ gpg "${KEYARG[@]}" -abs  -o dists/stable/Release.gpg dists/stable/Release
 gpg "${KEYARG[@]}" --clearsign -o dists/stable/InRelease   dists/stable/Release
 gpg "${KEYARG[@]}" --armor --export ${KEYID:+"$KEYID"} > suco-archive-keyring.asc
 
+# One-line installer, served next to the repo so users can:
+#   curl -fsSL <BASEURL>/install.sh | sudo sh
+cat > "$REPO/install.sh" <<EOF
+#!/bin/sh
+# One-line SUCO installer — sets up the signed APT repo and installs suco.
+#   curl -fsSL $BASEURL/install.sh | sudo sh
+set -e
+if [ "\$(id -u)" -ne 0 ]; then echo "Run with sudo: curl -fsSL $BASEURL/install.sh | sudo sh"; exit 1; fi
+KEYRING=/etc/apt/keyrings/suco.asc
+mkdir -p /etc/apt/keyrings
+if command -v curl >/dev/null 2>&1; then curl -fsSL "$BASEURL/suco-archive-keyring.asc" -o "\$KEYRING"
+elif command -v wget >/dev/null 2>&1; then wget -qO "\$KEYRING" "$BASEURL/suco-archive-keyring.asc"
+else echo "need curl or wget"; exit 2; fi
+echo "deb [signed-by=\$KEYRING] $BASEURL stable main" > /etc/apt/sources.list.d/suco.list
+apt-get update
+apt-get install -y suco
+echo
+echo "SUCO installed (\$(suco --version 2>/dev/null)). Nothing starts automatically — enable a role:"
+echo "  sudo systemctl enable --now suco-worker                    # compile node"
+echo "  sudo systemctl enable --now suco-coordinator suco-worker   # head node"
+EOF
+chmod +x "$REPO/install.sh"
+
 echo "Repo built at $REPO"
 echo "  dists/stable/{Release,Release.gpg,InRelease} signed"
 echo "  public key: $REPO/suco-archive-keyring.asc  (publish this alongside the repo)"
+echo "  one-line installer: $REPO/install.sh  (curl -fsSL $BASEURL/install.sh | sudo sh)"
 echo "Host the whole $REPO directory behind any static web server."
