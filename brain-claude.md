@@ -19,6 +19,24 @@ speed, but be installable in 30 seconds via `apt`.**
   objects from a content-addressed cache.
 - Published publicly: `sudo apt install suco` from https://micbur.github.io/suco.
 
+## Cold-build cost model (where the overhead actually is — 2026-07-22)
+
+Cold builds are SUCO's weak spot (parity with Icecream at best; slower on small/medium projects).
+Measured the per-TU CLIENT overhead with `SUCO_TIMING=1` on a 3.3 MB preprocessed TU:
+`pp≈496ms` (the compiler's `-E` — unavoidable, Icecream pays it too), then the SUCO-specific tax:
+`hset-split≈90ms` (building the two split strings line-by-line) + `prep-store≈52ms` (writing the
+warm-cache seed to disk) + `key+hash≈35ms` (SHA-256 for content-addressing) + `norm≈8ms` ≈
+**185 ms/TU, +37% on top of preprocessing.**
+
+**The strategic finding: that client tax is NOT the dominant cold cost.** Against the GoogleTest
+benchmark (108 files, -j17, cold overhead 33.8 s) the client tax accounts for only ~1.2 s (~4%).
+The other ~95% is the **network + scheduling + per-TU result upload** path — measurable only on the
+real grid, not on loopback. So cold-build optimization effort belongs on the dispatch/upload path
+(batching, pipelining round-trips, overlapping upload with the next compile), **not** on client-side
+micro-opts. Confirm by profiling a cold build on the real grid with `SUCO_TIMING` before touching
+anything. (Low-risk client wins already taken: `std::move` the split strings instead of copying —
+memory-traffic only, wall-clock within noise on one TU but compounds under -j parallelism.)
+
 ---
 
 ## Current state (2026-07-21)
