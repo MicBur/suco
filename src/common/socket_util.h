@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform_compat.h"  // ssize_t + POSIX-name shims under MSVC
+
 #ifdef _WIN32
     #ifndef NOMINMAX
         #define NOMINMAX

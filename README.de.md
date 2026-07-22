@@ -34,7 +34,7 @@ SUCO ist eine **hochperformante, leichtgewichtige Alternative** zu teuren propri
 - 📊 **Live Web-Dashboard** – Echtzeit-Monitoring aller Worker, CPU-Kerne und Jobs
 - 🛡️ **Transparentes Grid-Failover** – Bricht ein Worker weg, delegiert der Coordinator die Jobs sofort neu
 - ↩️ **Resilienter Client-Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
-- 🖥️ **Cross-Platform** – Native Unterstützung für Linux (GCC/Clang) und Windows (MinGW GCC); alle sechs Binaries bauen und betreiben das Grid nativ unter Windows, CI-getestet auf beiden Plattformen. MSVC-Unterstützung ist experimentell
+- 🖥️ **Cross-Platform** – Native Unterstützung für Linux (GCC/Clang) und Windows. Alle sechs Binaries bauen und betreiben das Grid nativ; MinGW GCC ist die empfohlene Windows-Toolchain (voll grid-getestet), und MSVC baut ebenfalls nativ — alle drei (Linux, MinGW, MSVC) sind CI-getestet
 - 🪟 **MSVC-Umgebungserkennung** – Findet Visual Studio unter Windows und importiert die Build-Umgebung automatisch
 - 🛠️ **CMake- & IDE-Integration** – Einfache Einbindung über `SUCO.cmake` und automatische `compile_commands.json` Markierung
 - 🧼 **Grid-weites Cache-Clearing** – Bereinigung aller lokalen und remote Caches über `suco cache clear`
@@ -192,7 +192,7 @@ Das gesamte System (Client, Coordinator, Worker) nutzt eine thread-sichere Loggi
 |---|---|
 | **Linux** | `build-essential`, `cmake`, `libssl-dev`, `libzstd-dev` |
 | **Windows (MinGW, empfohlen)** | MinGW-w64 GCC ≥ 13 (z. B. MSYS2 oder die Qt-Toolchain), CMake ≥ 3.15, Ninja, OpenSSL, SQLite3, zstd |
-| **Windows (MSVC, experimentell)** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL, zstd (via vcpkg) — Best-Effort-Build, ungetestet |
+| **Windows (MSVC)** | Visual Studio Build Tools (MSVC), CMake ≥ 3.15, OpenSSL + zstd + sqlite3 (via vcpkg) |
 
 ### Bauen
 
@@ -260,7 +260,7 @@ suco g++ -O3 -std=c++20 -c myfile.cpp -o myfile.o
 $env:SUCO_NO_DAEMON = "1"
 .\suco-cl++.exe -O2 -std=c++20 -c myfile.cpp -o myfile.o
 
-# Windows (MSVC, experimentell)
+# Windows (MSVC)
 suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj
 
 # In CMake

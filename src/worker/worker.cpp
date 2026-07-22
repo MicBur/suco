@@ -1,4 +1,5 @@
 #include "worker.h"
+#include "platform_compat.h"
 #include "tls_util.h"
 #include "metrics.h"
 #include "job_executor.h"

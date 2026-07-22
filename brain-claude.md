@@ -32,11 +32,17 @@ speed, but be installable in 30 seconds via `apt`.**
   loopback grid, dispatch via cmd.exe, cache hit. PR onto main is the next step; the CI push
   trigger temporarily includes `windows-mingw` — drop after merge. Until merged, `origin/main`
   does not build on Windows and still carries the header-set bug.
-- The best-effort **Windows MSVC CI job**: its configure step was broken since 2.1.0 (vcpkg was
-  missing `sqlite3` for the HistoryWriter's `find_package(SQLite3 REQUIRED)`) — fixed 2026-07-21,
-  configure is green again. The job now fails at BUILD: real MSVC compile errors in the source.
-  That is a separate porting work package (check the Actions log for the first error); the job
-  stays `continue-on-error` as a canary. MinGW remains the supported Windows toolchain.
+- **The Windows MSVC CI job is GREEN (2026-07-22, v0.10.3).** History: its configure was broken
+  since 2.1.0 (vcpkg missing `sqlite3`), fixed first; then it failed at build with real MSVC
+  errors, fixed via `fix/msvc-build` (PR #4). Root theme: the code was written for MinGW, which
+  provides POSIX names under `_WIN32`; MSVC does not. Fixes (all `_MSC_VER`/`WIN32`-guarded, MinGW
+  and Linux byte-identical): global `WIN32_LEAN_AND_MEAN`+`NOMINMAX` (winsock v1/v2 header clash),
+  a `platform_compat.h` shim (`popen`/`pclose`/`getpid`/`ssize_t`/`<unistd.h>`), and a
+  byte-identical rewrite of a greedy `\x1f` escape (module-CMI cache key — `0xFC 'M' 'I' 0x1F`
+  stays, so no drift). MinGW is still the *recommended* Windows toolchain (full grid smoke); the
+  MSVC job is build-only. **Reproduce MSVC locally:** vcpkg (`openssl zstd sqlite3 --triplet
+  x64-windows`) + `cmake -G "Visual Studio 17 2022" -A x64 --toolchain vcpkg.cmake`. Build Tools
+  live under `C:\Program Files (x86)\...\2022\BuildTools`.
 
 ---
 

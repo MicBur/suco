@@ -4,7 +4,7 @@
 #include "logging.h"
 #include "hash_util.h"
 #include <fstream>
-#include <unistd.h>
+#include "platform_compat.h"
 #include <sstream>
 #include <filesystem>
 #include <algorithm>

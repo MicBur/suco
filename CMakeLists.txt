@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(suco VERSION 0.10.2 LANGUAGES C CXX)
+project(suco VERSION 0.10.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,17 @@ endif()
 
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor")
+endif()
+
+# Windows: define these globally so EVERY <windows.h> include is lean. Several
+# translation units include <windows.h> directly and unguarded; without this, one
+# of them pulls in the legacy <winsock.h> (v1) before socket_util.h's <winsock2.h>
+# (v2), and MSVC then reports every socket struct/function as a redefinition
+# (sockaddr, fd_set, timeval, accept, ... — hundreds of C2011/C2375). MinGW tolerates
+# the clash; MSVC does not. NOMINMAX keeps windows.h's min/max macros from breaking
+# std::min/std::max. Harmless on MinGW (socket_util.h already sets both under guards).
+if(WIN32)
+    add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
 
 # Find OpenSSL for SHA-256 hashing

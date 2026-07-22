@@ -2,6 +2,11 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.10.3] - 2026-07-22
+
+### Fixed
+- **MSVC now builds the whole project natively** (first time the best-effort MSVC CI job is green). The code was written for MinGW, which provides POSIX names under `_WIN32`; MSVC does not. All fixes are `_MSC_VER`/`WIN32`-guarded so MinGW and Linux are byte-for-byte unaffected: `WIN32_LEAN_AND_MEAN`+`NOMINMAX` defined globally on Windows (fixes the winsock v1/v2 header clash — hundreds of `C2011`/`C2375`), a new `platform_compat.h` mapping `popen`/`pclose`/`getpid`/`ssize_t`/`<unistd.h>` to their MSVC equivalents, and a byte-identical rewrite of a greedy `\x1f` hex escape in the module-CMI cache-key token (MSVC `C7744`; the bytes on the grid are unchanged, so cache keys do not drift).
+
 ## [0.10.2] - 2026-07-22
 
 ### Fixed
