@@ -421,7 +421,20 @@ ToolchainInfo ToolchainPacker::pack(const std::string& compiler_path, bool is_qt
 
     SUCO_LOG_INFO("Creating toolchain archive for hash {}...", toolchain_hash);
 
-    // 8. Pack using tar + zstd with -C / (strip leading slashes)
+    // 8. Pack the toolchain into a .tar.zst.
+#ifdef _WIN32
+    // Git's GNU tar (first on PATH) is wrong for Windows twice over: --zstd/-I zstd
+    // shell out to a zstd.exe that is not installed, and it reads the "C:\..."
+    // archive path as a remote rmt host ("Cannot connect to C:"). Use the System32
+    // bsdtar (libarchive) instead: it has zstd built in (--zstd) and handles
+    // drive-letter paths. bsdtar strips the drive/leading slash itself and stores
+    // relative paths, so no -C / dance.
+    std::vector<std::string> tar_args = {"C:\\Windows\\System32\\tar.exe", "--zstd", "-cf", info.archive_path};
+    for (const auto& abs_p : paths_to_pack) {
+        tar_args.push_back(abs_p);
+    }
+#else
+    // POSIX: GNU tar with the external zstd filter, extracting relative to /.
     std::vector<std::string> tar_args = {"tar", "-I", "zstd", "-cf", info.archive_path, "-C", "/"};
     for (const auto& abs_p : paths_to_pack) {
         if (abs_p.starts_with("/")) {
@@ -430,6 +443,7 @@ ToolchainInfo ToolchainPacker::pack(const std::string& compiler_path, bool is_qt
             tar_args.push_back(abs_p);
         }
     }
+#endif
 
     auto [tar_code, tar_out] = run_local_capture(tar_args);
     if (tar_code != 0) {

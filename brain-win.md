@@ -425,10 +425,16 @@ Cache-Hit-Rate: 50.0 % (Hits: 1, Misses: 1)
   reply from the coordinator every time, proving coordinator + network were fine and the bug was
   in the client binary. Fixed in `fix/windows-socket-timeout` (PR #3): DWORD-ms on Windows,
   timeval on POSIX. The earlier "handshake refused / auth" theories were all wrong.
-  **Minor found in the same test:** toolchain archiving fails on Windows with `tar: Couldn't open
-  zstd: No such file or directory` — bsdtar wants a `zstd` executable on PATH. Non-fatal (the
-  build continues), but toolchain upload is inert on Windows until fixed (ship zstd.exe or use
-  the in-process compressor).
+  **Resolved (toolchain archiving on Windows):** it used to fail with `tar: Couldn't open zstd`
+  and `Cannot connect to C:` — Git's GNU tar (first on PATH) shells `--zstd`/`-I zstd` out to a
+  zstd.exe that is not installed AND reads the `C:\...` archive path as a remote rmt host. Fixed
+  (`toolchain_packer.cpp`): on Windows invoke `C:\Windows\System32\tar.exe` (bsdtar/libarchive,
+  zstd built in) with `--zstd`; bsdtar strips the drive letter itself, storing relative paths
+  (`Qt/Tools/...`) just like the Linux archive stores `usr/...`. Verified: 42.8 MB archive built,
+  valid zstd magic, contains g++.exe/cc1plus.exe, uploaded to the coordinator. Cross-machine
+  *extraction* of a Windows toolchain archive is still unproven end-to-end (needs a Windows worker
+  that lacks the toolchain) — but the packing half is correct, and this path is never hit for
+  Windows→Linux dispatch (the Linux worker uses its own cross compiler).
   **Grid secret (for the eventual cross-dispatch test):** `SUCO_SECRET` on the k3master coordinator
   is 64 chars, `sha256[0:12]=41d8325814ad` (value never read into the clear). To join the grid the
   Windows client needs the same value in its env (`setx SUCO_SECRET ...`). A machine-local,
