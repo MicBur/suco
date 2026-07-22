@@ -74,6 +74,23 @@ ToolchainInfo ToolchainDetector::detect() {
         }
     }
 
+    // 1b. MinGW cross/target compilers. Windows clients dispatch their jobs under
+    // the target-qualified name (x86_64-w64-mingw32-g++), and the scheduler matches
+    // that against THIS map — so a worker serves Windows clients if and only if it
+    // advertises the driver here. On Linux nodes that is the mingw-w64 package; on
+    // Windows workers the toolchain ships the alias anyway. Absent → probe fails →
+    // not advertised → the scheduler skips this worker for such jobs. No wire-format
+    // change: the toolchain map has always been an open name→version dictionary.
+    for (const char* cross : {"x86_64-w64-mingw32-g++", "x86_64-w64-mingw32-gcc"}) {
+        std::string cross_out = exec_command(std::string(cross) + " --version");
+        if (!cross_out.empty()) {
+            std::string ver = extract_version(cross_out);
+            if (!ver.empty()) {
+                info.compilers[cross] = ver;
+            }
+        }
+    }
+
     // 2. clang++ / clang
     std::string clang_out = exec_command("clang++ --version");
     if (!clang_out.empty()) {

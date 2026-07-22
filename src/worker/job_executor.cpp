@@ -29,6 +29,17 @@ namespace suco::worker {
 
 namespace {
 
+// The compile command is a shell string ("cd <job dir> && <compiler> ..."), so the
+// leading cd has to speak the shell run_local_capture uses. On Windows that is cmd.exe,
+// where a bare `cd` refuses to cross volumes: with TEMP on a different drive than the
+// worker's own cwd it silently stays put and the compiler then runs in the wrong
+// directory, missing the input it was just handed. /d makes it switch drive too.
+#ifdef _WIN32
+constexpr const char* kCdCommand = "cd /d ";
+#else
+constexpr const char* kCdCommand = "cd ";
+#endif
+
 // Picks the name the preprocessed input is written under inside the job directory.
 // It lands in the object's STT_FILE symbol and debug info, so reproducing the client's
 // own (relative) path is what makes grid objects match native ones.
@@ -265,7 +276,7 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
         // __FILE__ must keep resolving via the client's line markers. GCC 4.3+/clang.
         final_cmd += " \"-fdebug-prefix-map=" + job_dir + "=.\"";
     }
-    final_cmd = "cd \"" + job_dir + "\" && " + final_cmd;
+    final_cmd = kCdCommand + ("\"" + job_dir + "\" && " + final_cmd);
 
     if (std::getenv("SUCO_DEBUG_PAYLOAD")) {
         SUCO_LOG_INFO("[PAYLOAD-CMD] {}", final_cmd);
@@ -302,8 +313,8 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
             fallback_out.write(filtered_fallback.data(), filtered_fallback.size());
             fallback_out.close();
 
-            std::string fallback_cmd = "cd \"" + job_dir + "\" && " +
-                rebuild_compiler_command(command, rel_name, temp_out, is_msvc, is_c, toolchain_hash, false);
+            std::string fallback_cmd = kCdCommand + ("\"" + job_dir + "\" && " +
+                rebuild_compiler_command(command, rel_name, temp_out, is_msvc, is_c, toolchain_hash, false));
             result.log = run_local_capture(fallback_cmd, compile_exit, timeout_seconds);
             result.exit_code = compile_exit;
             result.header_cache_hit = false;
@@ -457,8 +468,16 @@ std::string JobExecutor::run_local_capture(const std::string& cmd, int& exit_cod
 
     ZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
 
+    // Run through cmd.exe, exactly as the POSIX branch runs through `sh -c`. The command
+    // is shell syntax ("cd <dir> && <compiler> ..."), and CreateProcess has no shell: it
+    // took the first token literally and looked for an executable named "cd", which is a
+    // cmd.exe builtin and does not exist as one. Every remote job on Windows therefore
+    // died with CreateProcess failed -> exit -1 -> the client silently recompiled it
+    // locally, so the grid looked alive while distributing nothing.
+    std::string shell_cmd = "cmd.exe /c " + cmd;
+
     // CreateProcess benötigt einen modifizierbaren Puffer
-    std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+    std::vector<char> cmd_buf(shell_cmd.begin(), shell_cmd.end());
     cmd_buf.push_back('\0');
 
     if (!CreateProcessA(NULL, cmd_buf.data(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {

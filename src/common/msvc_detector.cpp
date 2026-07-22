@@ -1,6 +1,7 @@
 #include "msvc_detector.h"
 #include <iostream>
 #include <cstdlib>
+#include <vector>
 
 #ifdef _WIN32
     #include <windows.h>

@@ -17,6 +17,7 @@
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -142,10 +143,17 @@ static void handle_run_request(socket_t client_sock) {
     uint32_t num_in = ntohl(num_in_net);
     if (num_in > 100000) return;
 
+#ifdef _WIN32
+    std::error_code temp_ec;
+    std::filesystem::path workdir = std::filesystem::temp_directory_path(temp_ec) / ("suco_run_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(workdir, temp_ec);
+    if (temp_ec) return;
+#else
     char tmpl[] = "/tmp/suco_run_XXXXXX";
     char* dir = mkdtemp(tmpl);
     if (!dir) return;
     std::filesystem::path workdir(dir);
+#endif
     std::error_code ec;
 
     for (uint32_t i = 0; i < num_in; ++i) {
@@ -181,7 +189,11 @@ static void handle_run_request(socket_t client_sock) {
         size_t n;
         while ((n = fread(buf, 1, sizeof(buf), pipe)) > 0) log.append(buf, n);
         int st = pclose(pipe);
+#ifdef _WIN32
+        exit_code = (st >= 0) ? st : -1;
+#else
         exit_code = (st >= 0 && WIFEXITED(st)) ? WEXITSTATUS(st) : -1;
+#endif
     }
 
     uint32_t rt = htonl(suco::PACKET_RUN_RESP);
@@ -446,7 +458,7 @@ void Worker::signal_unblock() noexcept {
         // destructor's join() waited forever and the process only died via systemd's
         // 90s SIGKILL. shutdown() makes the pending accept() return immediately.
         ::shutdown(lsock, SHUT_RDWR);
-        ::close(lsock);
+        close_socket(lsock);
     }
     socket_t csock = m_net_client.get_socket();
     if (csock != INVALID_SOCKET_VAL) {

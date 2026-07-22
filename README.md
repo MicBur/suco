@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.9.2-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.10.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
   <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
@@ -37,7 +37,7 @@ SUCO is a **high-performance, lightweight alternative** to expensive proprietary
 - 🔄 **Least-Recently-Assigned Scheduling** – Fair Round-Robin tie-breaking distributes parallel compile threads uniformly.
 - 🛡️ **Transparent Grid Failover** – If a worker goes offline, the coordinator immediately reschedules the jobs.
 - ↩️ **Resilient Client Fallback** – If the coordinator fails, the client seamlessly falls back to local compilation in <100ms.
-- 🖥️ **Cross-Platform** – Native support for Windows (MSVC) and Linux (GCC/Clang).
+- 🖥️ **Cross-Platform** – Native support for Linux (GCC/Clang) and Windows (MinGW GCC); all six binaries build and run the grid natively on Windows, CI-tested on both platforms. MSVC support is experimental.
 - 🪟 **MSVC Environment Detection** – Automatically locates Visual Studio under Windows and imports the MSVC build environment.
 - 🛠️ **CMake & IDE Integration** – Easy integration via `SUCO.cmake` and automatic `compile_commands.json` wrapper prefix cleaning.
 - 🧼 **Grid-Wide Cache Clearing** – Clean all local and remote caches via `suco cache clear`.
@@ -193,8 +193,9 @@ Client, coordinator, and worker use a unified thread-safe logging library:
 
 | Platform | Packages |
 |---|---|
-| **Windows** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL, zstd (via vcpkg) |
 | **Linux** | `build-essential`, `cmake`, `libssl-dev`, `libzstd-dev` |
+| **Windows (MinGW, recommended)** | MinGW-w64 GCC ≥ 13 (e.g. MSYS2 or the Qt toolchain), CMake ≥ 3.15, Ninja, OpenSSL, SQLite3, zstd |
+| **Windows (MSVC, experimental)** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL, zstd (via vcpkg) — builds are best-effort, untested |
 
 ### Building
 
@@ -203,10 +204,27 @@ Client, coordinator, and worker use a unified thread-safe logging library:
 cmake -B build_linux -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build_linux
 
-# Windows (Developer PowerShell)
+# Windows (MSYS2 MinGW64 shell)
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
+                   mingw-w64-x86_64-openssl mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-zstd
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+# Windows (Qt MinGW toolchain, PowerShell) — build zstd once into thirdparty/, see docs
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/Tools/mingw1310_64/opt"
+cmake --build build --config Release
+
+# Windows (MSVC, experimental — build-only, not smoke-tested)
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Release
 ```
+
+> 🪟 **Windows notes:** run clients with `SUCO_NO_DAEMON=1` (the IPC daemon uses Unix sockets).
+> The header-set/PCH optimization works on Windows: MinGW system headers are recognized, workers
+> cache the header text, build PCHs and serve stripped TUs (~KB instead of MB payloads). Windows
+> clients dispatch MinGW jobs under the target-qualified name `x86_64-w64-mingw32-g++`, so Linux
+> workers can serve them once `mingw-w64` is installed there — nodes without it are skipped safely
+> (the client compiles locally).
 
 ### Installation (Linux)
 
@@ -277,7 +295,11 @@ The installer installs binaries to `/usr/local/bin/`, registers systemd daemons,
 # Linux (GCC)
 suco g++ -O3 -std=c++20 -c myfile.cpp -o myfile.o
 
-# Windows (MSVC)
+# Windows (MinGW, PowerShell)
+$env:SUCO_NO_DAEMON = "1"
+.\suco-cl++.exe -O2 -std=c++20 -c myfile.cpp -o myfile.o
+
+# Windows (MSVC, experimental)
 suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj
 
 # In CMake Lists

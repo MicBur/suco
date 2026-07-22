@@ -16,6 +16,9 @@
     constexpr socket_t INVALID_SOCKET_VAL = INVALID_SOCKET;
     inline int get_socket_error() { return WSAGetLastError(); }
     inline bool is_would_block(int err) { return err == WSAEWOULDBLOCK || err == WSAEINPROGRESS; }
+    #ifndef SHUT_RDWR
+        #define SHUT_RDWR SD_BOTH
+    #endif
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>

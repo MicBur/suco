@@ -120,7 +120,10 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd,
         uint32_t hash_len = htonl(cmd.content_hash.size());
         uint32_t file_len = htonl(cmd.source_file.size());
         uint32_t tc_hash_len = htonl(cmd.toolchain_hash.size());
-        uint32_t req_comp_len = htonl(cmd.required_compiler.size());
+        // On the wire we advertise the DISPATCH id (target-qualified for MinGW), so
+        // the scheduler only picks workers that actually have the right driver.
+        const std::string req_comp = cmd.get_dispatch_compiler_id();
+        uint32_t req_comp_len = htonl(req_comp.size());
         uint32_t req_comp_ver_len = htonl(cmd.required_compiler_version.size());
         uint32_t hs_hash_len = htonl(cmd.header_set_hash.size());
 
@@ -132,7 +135,7 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd,
             !suco::send_all(sock_, &tc_hash_len, 4) ||
             (!cmd.toolchain_hash.empty() && !suco::send_all(sock_, cmd.toolchain_hash.c_str(), cmd.toolchain_hash.size())) ||
             !suco::send_all(sock_, &req_comp_len, 4) ||
-            (!cmd.required_compiler.empty() && !suco::send_all(sock_, cmd.required_compiler.c_str(), cmd.required_compiler.size())) ||
+            (!req_comp.empty() && !suco::send_all(sock_, req_comp.c_str(), req_comp.size())) ||
             !suco::send_all(sock_, &req_comp_ver_len, 4) ||
             (!cmd.required_compiler_version.empty() && !suco::send_all(sock_, cmd.required_compiler_version.c_str(), cmd.required_compiler_version.size())) ||
             !suco::send_all(sock_, &hs_hash_len, 4) ||
@@ -367,7 +370,7 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
     SUCO_LOG_INFO("Requesting remote compile for {}", cmd.source_file);
 
     // Reconstruct the compiler invocation command without local-only parameters
-    std::string remote_cmd = cmd.compiler_path;
+    std::string remote_cmd = cmd.get_remote_compiler_name();
     for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
         const auto& flag = cmd.other_flags[f];
         
@@ -451,7 +454,9 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
     uint32_t cmd_len = htonl(remote_cmd.size());
     uint32_t file_len = htonl(cmd.source_file.size());
     uint32_t src_len_net = htonl(src_len);
-    uint32_t req_comp_len = htonl(cmd.required_compiler.size());
+    // Dispatch id on the wire (target-qualified for MinGW) — see PACKET_CACHE_QUERY.
+    const std::string req_comp = cmd.get_dispatch_compiler_id();
+    uint32_t req_comp_len = htonl(req_comp.size());
     uint32_t req_comp_ver_len = htonl(cmd.required_compiler_version.size());
     uint32_t tc_hash_len = htonl(cmd.toolchain_hash.size());
     uint32_t hs_hash_len = htonl(cmd.header_set_hash.size());
@@ -466,7 +471,7 @@ CompileResult NetworkClient::try_compile(const CompilerCommand& cmd) {
         !suco::send_all(sock_, &src_len_net, 4) ||
         (src_len > 0 && !suco::send_all(sock_, src_data, src_len)) ||
         !suco::send_all(sock_, &req_comp_len, 4) ||
-        (!cmd.required_compiler.empty() && !suco::send_all(sock_, cmd.required_compiler.c_str(), cmd.required_compiler.size())) ||
+        (!req_comp.empty() && !suco::send_all(sock_, req_comp.c_str(), req_comp.size())) ||
         !suco::send_all(sock_, &req_comp_ver_len, 4) ||
         (!cmd.required_compiler_version.empty() && !suco::send_all(sock_, cmd.required_compiler_version.c_str(), cmd.required_compiler_version.size())) ||
         !suco::send_all(sock_, &tc_hash_len, 4) ||
@@ -929,7 +934,7 @@ bool NetworkClient::send_batch_compile_request(const std::vector<JobItem>& jobs)
     for (const auto& item : jobs) {
         const auto& cmd = item.cmd;
 
-        std::string remote_cmd = cmd.compiler_path;
+        std::string remote_cmd = cmd.get_remote_compiler_name();
         for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
             const auto& flag = cmd.other_flags[f];
             if (cmd.is_msvc) {
@@ -1257,7 +1262,7 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
     }
 
     // 2. Befehl rekonstruieren (identisch zu try_compile)
-    std::string remote_cmd = cmd.compiler_path;
+    std::string remote_cmd = cmd.get_remote_compiler_name();
     for (size_t f = 0; f < cmd.other_flags.size(); ++f) {
         const auto& flag = cmd.other_flags[f];
         if (cmd.is_msvc) {
@@ -1394,8 +1399,25 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         return result;
     }
 
-    // 5. Verbindung zum Coordinator aufbauen, um das Ergebnis hochzuladen
-    SUCO_LOG_INFO("Uploading compiled binary to coordinator cache for hash {}", cmd.content_hash);
+    // 5. Report the result to the coordinator.
+    //
+    // This runs even when the remote compile FAILED, and must: the same
+    // PACKET_CACHE_STORE releases the worker slot reserved during the cache-miss
+    // query (client_handler), so skipping it on failure would leak one slot per
+    // failed job until the grid ran dry. Only the STORE half is conditional —
+    // the coordinator caches nothing unless exit_code == 0.
+    //
+    // Say which of the two is happening. This used to announce an upload and then
+    // report "stored successfully" for any acknowledged packet, so a worker that
+    // failed every single job still produced a log that read like a healthy cache
+    // fill — which is exactly how the Windows dispatch outage stayed invisible.
+    const bool cacheable = (result.exit_code == 0);
+    if (cacheable) {
+        SUCO_LOG_INFO("Uploading compiled binary to coordinator cache for hash {}", cmd.content_hash);
+    } else {
+        SUCO_LOG_INFO("Remote compile of {} failed (exit {}) — reporting to coordinator to release "
+                      "the worker slot; not cached", cmd.source_file, result.exit_code);
+    }
     if (!connect_to_coordinator()) {
         SUCO_LOG_WARNING("Failed to connect to coordinator to store cache entry");
         return result;
@@ -1445,7 +1467,9 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         uint32_t ack_type_net = 0;
         if (suco::read_all(sock_, &ack_type_net, 4)) {
             uint32_t ack_type = ntohl(ack_type_net);
-            if (ack_type == suco::PACKET_TOOLCHAIN_ACK) {
+            // The ACK acknowledges the packet, not a store — the coordinator sends it
+            // whether or not it cached anything. Only claim a store when one was possible.
+            if (ack_type == suco::PACKET_TOOLCHAIN_ACK && cacheable) {
                 SUCO_LOG_INFO("Coordinator stored cache entry successfully.");
             }
         }

@@ -21,6 +21,7 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <process.h>
+    #include <io.h>
 #else
     #include <unistd.h>
     #include <limits.h>
@@ -1912,7 +1913,11 @@ private:
 
     static int run_local(const std::string& cmd_str) {
         int st = std::system(cmd_str.c_str());
+#ifdef _WIN32
+        return (st >= 0) ? st : 1;
+#else
         return (st >= 0 && WIFEXITED(st)) ? WEXITSTATUS(st) : 1;
+#endif
     }
 
     // --- A4: auto I/O tracking (IncrediBuild-style transparency) ---
@@ -2367,7 +2372,11 @@ private:
         char buf[4096]; size_t n;
         while ((n = fread(buf, 1, sizeof(buf), p)) > 0) out.append(buf, n);
         int st = pclose(p);
+#ifdef _WIN32
+        int ec = (st >= 0) ? st : 1;
+#else
         int ec = (st >= 0 && WIFEXITED(st)) ? WEXITSTATUS(st) : 1;
+#endif
         bool cached = out.find("cache hit") != std::string::npos;
         return { ec, cached, out };
     }

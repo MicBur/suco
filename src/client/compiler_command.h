@@ -81,6 +81,42 @@ struct CompilerCommand {
     std::string get_compiler_version() const;
 
     /**
+     * @brief The compiler name to put in a job dispatched to a worker.
+     *
+     * "g++" means "produces objects for THIS machine", which is exactly wrong once the
+     * job may land on a machine with a different native target: a MinGW client's job
+     * assigned to a Linux worker would be compiled by that worker's own g++ and come
+     * back as an ELF object, failing at link time with nothing pointing at the cause.
+     * For MinGW targets the toolchain ships a triple-qualified alias
+     * (x86_64-w64-mingw32-g++), which names the target instead of the host, so a worker
+     * either has it and produces the right object or lacks it and exits 127 — already
+     * handled as an infrastructure signal (invariant #3) that recompiles locally.
+     *
+     * Deliberately limited to MinGW targets: qualifying Linux targets too would make
+     * every job depend on an x86_64-linux-gnu-g++ alias existing on every node, which
+     * is not guaranteed and would take a working grid down to local-only compiles.
+     */
+    std::string get_remote_compiler_name() const;
+
+    /**
+     * @brief The compiler NAME to advertise in cache queries and job requests.
+     *
+     * This is what the coordinator's scheduler matches against a worker's advertised
+     * toolchain map, so for MinGW targets it must be the target-qualified name a
+     * suitable worker actually advertises (x86_64-w64-mingw32-g++) — a worker without
+     * that driver is then skipped up front instead of being assigned a job it can only
+     * answer with exit 127. Everything else keeps the plain name.
+     *
+     * Wire-compatible with 0.9.2: the field is a free-form string; old workers simply
+     * never advertise the qualified name, so the scheduler finds no worker and the
+     * client compiles locally — same net behavior as today, minus the wasted dispatch.
+     * The in-process required_compiler member intentionally stays the LOCAL name
+     * ("g++"): it doubles as the feature-flag selector for -fdirectives-only and
+     * -ffile-prefix-map, which must not change with the dispatch target.
+     */
+    std::string get_dispatch_compiler_id() const;
+
+    /**
      * @brief Constructs the normalized string payload used for generating the cache key hash.
      */
     std::string get_hash_input() const;

@@ -82,6 +82,42 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
 
+  build-windows-mingw:
+    name: Windows MinGW Build & Smoke Test
+    runs-on: windows-latest
+    # Blocking on purpose — unlike the MSVC job below, this is the toolchain the
+    # Windows port is actually developed and verified against (Qt/MinGW GCC), and
+    # the smoke test exercises the real loopback grid: dispatch, worker compile
+    # via cmd.exe, cache store and cache hit. If this breaks, Windows is broken.
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 / MinGW64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-sqlite3
+            mingw-w64-x86_64-zstd
+
+      - name: Configure CMake
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      - name: Run smoke test (loopback grid + cache hit)
+        run: bash tests/ci_smoke_test.sh "$PWD/build"
+
   build-windows-msvc:
     name: Windows MSVC Build
     runs-on: windows-latest
@@ -93,8 +129,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies via vcpkg
+        # sqlite3 was missing since the coordinator gained its SQLite HistoryWriter
+        # (2.1.0) — find_package(SQLite3 REQUIRED) made configure fail ever since,
+        # silently, because this job is continue-on-error.
         run: |
-          vcpkg install openssl zstd --triplet x64-windows
+          vcpkg install openssl zstd sqlite3 --triplet x64-windows
 
       - name: Configure CMake
         run: |

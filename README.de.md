@@ -34,7 +34,7 @@ SUCO ist eine **hochperformante, leichtgewichtige Alternative** zu teuren propri
 - 📊 **Live Web-Dashboard** – Echtzeit-Monitoring aller Worker, CPU-Kerne und Jobs
 - 🛡️ **Transparentes Grid-Failover** – Bricht ein Worker weg, delegiert der Coordinator die Jobs sofort neu
 - ↩️ **Resilienter Client-Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
-- 🖥️ **Cross-Platform** – Native Unterstützung für Windows (MSVC) und Linux (GCC/Clang)
+- 🖥️ **Cross-Platform** – Native Unterstützung für Linux (GCC/Clang) und Windows (MinGW GCC); alle sechs Binaries bauen und betreiben das Grid nativ unter Windows, CI-getestet auf beiden Plattformen. MSVC-Unterstützung ist experimentell
 - 🪟 **MSVC-Umgebungserkennung** – Findet Visual Studio unter Windows und importiert die Build-Umgebung automatisch
 - 🛠️ **CMake- & IDE-Integration** – Einfache Einbindung über `SUCO.cmake` und automatische `compile_commands.json` Markierung
 - 🧼 **Grid-weites Cache-Clearing** – Bereinigung aller lokalen und remote Caches über `suco cache clear`
@@ -190,8 +190,9 @@ Das gesamte System (Client, Coordinator, Worker) nutzt eine thread-sichere Loggi
 
 | Platform | Pakete |
 |---|---|
-| **Windows** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL |
-| **Linux** | `build-essential`, `cmake`, `libssl-dev` |
+| **Linux** | `build-essential`, `cmake`, `libssl-dev`, `libzstd-dev` |
+| **Windows (MinGW, empfohlen)** | MinGW-w64 GCC ≥ 13 (z. B. MSYS2 oder die Qt-Toolchain), CMake ≥ 3.15, Ninja, OpenSSL, SQLite3, zstd |
+| **Windows (MSVC, experimentell)** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL, zstd (via vcpkg) — Best-Effort-Build, ungetestet |
 
 ### Bauen
 
@@ -200,10 +201,23 @@ Das gesamte System (Client, Coordinator, Worker) nutzt eine thread-sichere Loggi
 cmake -B build_linux -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build_linux
 
-# Windows (Developer PowerShell)
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+# Windows (MSYS2-MinGW64-Shell)
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
+                   mingw-w64-x86_64-openssl mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-zstd
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+# Windows (Qt-MinGW-Toolchain, PowerShell) — zstd einmalig nach thirdparty/ bauen, siehe Doku
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/Tools/mingw1310_64/opt"
 cmake --build build --config Release
 ```
+
+> 🪟 **Windows-Hinweise:** Clients mit `SUCO_NO_DAEMON=1` starten (der IPC-Daemon nutzt
+> Unix-Sockets). Die Header-Set/PCH-Optimierung funktioniert unter Windows: MinGW-System-Header
+> werden erkannt, Worker cachen den Header-Text, bauen PCHs und bedienen gestrippte TUs (~KB statt
+> MB Payload). Windows-Clients dispatchen MinGW-Jobs unter dem zielqualifizierten Namen
+> `x86_64-w64-mingw32-g++` — Linux-Worker können sie bedienen, sobald dort `mingw-w64` installiert
+> ist; Nodes ohne werden sicher übersprungen (der Client kompiliert lokal).
 
 ### Installer (Linux)
 
@@ -242,7 +256,11 @@ Der Installer kopiert die Binaries nach `/usr/local/bin/`, richtet systemd-Servi
 # Linux (GCC)
 suco g++ -O3 -std=c++20 -c myfile.cpp -o myfile.o
 
-# Windows (MSVC)
+# Windows (MinGW, PowerShell)
+$env:SUCO_NO_DAEMON = "1"
+.\suco-cl++.exe -O2 -std=c++20 -c myfile.cpp -o myfile.o
+
+# Windows (MSVC, experimentell)
 suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj
 
 # In CMake

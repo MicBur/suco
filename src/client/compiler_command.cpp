@@ -581,6 +581,38 @@ std::string CompilerCommand::get_target_architecture() const {
     return meta.architecture;
 }
 
+std::string CompilerCommand::get_remote_compiler_name() const {
+    if (is_msvc) return compiler_path;
+
+    // -dumpmachine, e.g. "x86_64-w64-mingw32" or "x86_64-linux-gnu". Only MinGW targets
+    // are qualified — see the header for why Linux ones deliberately are not.
+    const std::string triple = get_target_architecture();
+    if (triple.find("mingw") == std::string::npos) return compiler_path;
+
+    std::string name = get_compiler_name();
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0) {
+        name.resize(name.size() - 4);
+    }
+    if (name.starts_with(triple + "-")) return name;  // already target-qualified
+
+    // Only the ambiguous driver names. Anything else is either already specific or
+    // something we should not be second-guessing.
+    if (name == "g++" || name == "c++") return triple + "-g++";
+    if (name == "gcc" || name == "cc")  return triple + "-gcc";
+    return compiler_path;
+}
+
+std::string CompilerCommand::get_dispatch_compiler_id() const {
+    if (is_msvc) return required_compiler;
+    const std::string triple = get_target_architecture();
+    if (triple.find("mingw") == std::string::npos) return required_compiler;
+    // Same mapping as get_remote_compiler_name: only the ambiguous GCC driver
+    // names get qualified; anything else is passed through untouched.
+    if (required_compiler == "g++" || required_compiler == "c++") return triple + "-g++";
+    if (required_compiler == "gcc" || required_compiler == "cc")  return triple + "-gcc";
+    return required_compiler;
+}
+
 std::string CompilerCommand::get_compiler_version() const {
     auto meta = query_compiler_metadata(compiler_path, is_msvc);
     return meta.version;

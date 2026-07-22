@@ -26,6 +26,17 @@ speed, but be installable in 30 seconds via `apt`.**
 - Public repo: **github.com/MicBur/suco**, all nodes on **0.9.2**, grid healthy (4 workers / 13 slots).
 - APT repo built + signed by GitHub Actions on every `v*` tag → GitHub Pages. CI is green.
 - Docs: `docs/INSTALL.md` (full setup), `docs/INSTALL-apt.md` (apt + maintainer).
+- **Branch `windows-mingw` is pushed and CI-green (2026-07-21)** — including the full Linux battery
+  (smoke, cache-correctness, chaos, ASan/UBSan) over the shared-code fixes (`header_set_hasher.cpp`,
+  see invariant #8), and a NEW blocking Windows/MinGW CI job (MSYS2) that runs the same smoke test:
+  loopback grid, dispatch via cmd.exe, cache hit. PR onto main is the next step; the CI push
+  trigger temporarily includes `windows-mingw` — drop after merge. Until merged, `origin/main`
+  does not build on Windows and still carries the header-set bug.
+- The best-effort **Windows MSVC CI job**: its configure step was broken since 2.1.0 (vcpkg was
+  missing `sqlite3` for the HistoryWriter's `find_package(SQLite3 REQUIRED)`) — fixed 2026-07-21,
+  configure is green again. The job now fails at BUILD: real MSVC compile errors in the source.
+  That is a separate porting work package (check the Actions log for the first error); the job
+  stays `continue-on-error` as a canary. MinGW remains the supported Windows toolchain.
 
 ---
 
@@ -65,6 +76,23 @@ speed, but be installable in 30 seconds via `apt`.**
 7. **Measurement hygiene:** benchmark only on an idle machine. Background apps (browser, k3s, an IDE)
    steal ~1.5 cores and inflate cold *and especially warm* numbers. The bench script waits for
    load < 1.5. Loaded runs looked 40–60s slower — not a regression.
+8. **A hash is not a presence flag.** `HeaderSetHasher::compute_hash` digests flags + compiler
+   version + toolchain hash regardless of whether any system header was found, so it returned a
+   non-empty `header_set_hash` for a TU with *no* header set. All three callers read "non-empty
+   hash" as "this TU has a header set" and swap in `stripped_source`, which the same function only
+   fills when `header_paths` is non-empty → the worker receives a header-set hash, no header text
+   and an EMPTY TU, and can only answer `-5`. Fixed 2026-07-21 (return `""` when `header_paths` is
+   empty). **Not a Windows-only bug** — on Linux any TU without system headers reaches it; on
+   Windows it was every TU, because the split recognises system headers by a `/usr/` prefix and
+   MinGW's live under `C:/Qt/Tools/...`.
+9. **Invariant #3 hides TOTAL failure — so count the self-heals.** Because a worker's bad state is
+   absorbed into a correct local compile, "the grid distributes nothing" and "the grid is a bit
+   slow" are indistinguishable from the build's exit codes. The entire Windows port ran with
+   **zero** TUs compiled on a worker while every build succeeded; two independent bugs hid behind
+   one warning line, the second only reachable once the first was fixed. The self-heal is right and
+   must stay — but a fallback that is invisible is a fallback that is permanent. Judge distribution
+   by `Direct dispatch OK` plus a worker-side `Exit: 0`, never by a green build and never by
+   `Cache hit` (which proves only the cache path).
 
 ## Diagnostic discipline
 
@@ -103,7 +131,28 @@ ignore `SIGTERM` → `SIGKILL` when needed.
 ## For the Windows machine
 
 - `git clone`/`git pull` on the same repo keeps the **code** in sync — that is the reliable
-  "same state" for the project.
+  "same state" for the project. As of 2026-07-21 the Windows box is a real clone with `origin`
+  set (it used to be a ZIP copy), so no more manual file shuttling.
 - Write your side into `brain-win.md`. Same rule as here: **no secrets — the repo is public.**
+- **Cross-compilers are INSTALLED on all four nodes (2026-07-21):** `g++-mingw-w64-x86-64`,
+  GCC **13.2**, alternatives set to **posix** threads (matching the Windows client's Qt MinGW
+  13.1-posix — the majors line up, the version gate will pass). The scheduler matches Windows
+  jobs by a target-qualified dispatch id (`x86_64-w64-mingw32-g++`) against the worker's
+  toolchain map — no protocol change, old workers are simply never selected and the client
+  compiles locally. **The one remaining step: a release**, so the nodes' workers pick up the
+  toolchain probe and start advertising the cross compiler. Linux→Linux jobs are unaffected.
+- **Grid auth vs. the Windows client:** the coordinator (on k3master, NOT Brain-OS) has
+  `SUCO_SECRET` enabled; a client without it is refused at handshake. Verified from the Windows
+  box: the refusal degrades into a clean local compile (exit 0, object produced) — tested 3×.
+  One first-ever-contact run ended exit -1 with no object and could NOT be reproduced; noted in
+  brain-win.md, worth an eye. To actually join the grid, the Windows client needs `SUCO_SECRET`
+  set (value lives in private notes, never in the repo).
+- **Header sets / PCH work on Windows now** (2026-07-21): the system-header predicate also accepts
+  paths containing `mingw`. Invariant #1 held by construction — additive predicate (no `/usr/`
+  path changes membership) and Windows had zero existing header-set keys. Verified end-to-end on
+  the loopback grid incl. PCH build/HIT and a `__LINE__` provenance probe byte-identical to
+  native. Cosmetic: `linemarker ignored due to incorrect nesting` warnings on the Windows worker
+  (push markers stripped with header text, return markers kept) — provenance proven unaffected;
+  worth checking whether Linux workers log the same.
 - Antigravity's own conversations/settings are not synced through this file; that's tied to the
   Antigravity account, not the git repo.

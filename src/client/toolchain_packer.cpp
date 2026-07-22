@@ -40,16 +40,48 @@ std::string get_canonical_path(const std::string& path) {
     return can_p.string();
 }
 
-// Resolves tool name using "which"
+// Resolves tool name using "which" (POSIX) or a PATH walk (Windows, which has
+// no `which`; shelling to `where` would spawn a console and need output parsing).
 std::string resolve_bin_path(const std::string& name) {
     if (name.starts_with("/") || name.starts_with("./") || name.starts_with("../")) {
         return get_canonical_path(name);
     }
+#ifdef _WIN32
+    // Drive-letter or UNC absolute paths, and anything already containing a
+    // separator, are used as-is (mirrors the POSIX early-out above).
+    if ((name.size() > 1 && name[1] == ':') ||
+        name.find('\\') != std::string::npos || name.find('/') != std::string::npos) {
+        return get_canonical_path(name);
+    }
+    const char* path_env = std::getenv("PATH");
+    if (!path_env) return "";
+    std::stringstream ss(path_env);
+    std::string dir;
+    const bool has_ext = name.size() > 4 &&
+        (name.compare(name.size() - 4, 4, ".exe") == 0 ||
+         name.compare(name.size() - 4, 4, ".bat") == 0 ||
+         name.compare(name.size() - 4, 4, ".cmd") == 0);
+    while (std::getline(ss, dir, ';')) {
+        if (dir.empty()) continue;
+        std::error_code ec;
+        std::filesystem::path cand = std::filesystem::path(dir) / name;
+        if (!has_ext) {
+            std::filesystem::path cand_exe = cand;
+            cand_exe += ".exe";
+            if (std::filesystem::exists(cand_exe, ec)) return get_canonical_path(cand_exe.string());
+        }
+        if (std::filesystem::exists(cand, ec) && !std::filesystem::is_directory(cand, ec)) {
+            return get_canonical_path(cand.string());
+        }
+    }
+    return "";
+#else
     auto [code, out] = run_local_capture({"which", name});
     if (code == 0 && !out.empty()) {
         return get_canonical_path(clean_string(out));
     }
     return "";
+#endif
 }
 
 // Computes SHA-256 hash of a file
