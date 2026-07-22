@@ -84,12 +84,15 @@ static std::string get_socket_ip(socket_t sock) {
 void ClientHandler::handle_client_connection(socket_t client_sock) {
     std::string client_ip = get_socket_ip(client_sock);
 
+#ifdef _WIN32
+    // Winsock SO_RCVTIMEO takes a DWORD of milliseconds, not a struct timeval —
+    // a timeval here would be read as ~60 ms and cut client connections short.
+    DWORD tv_idle_ms = 60000;
+    setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv_idle_ms), sizeof(tv_idle_ms));
+#else
     struct timeval tv_idle{};
     tv_idle.tv_sec = 60;
     tv_idle.tv_usec = 0;
-#ifdef _WIN32
-    setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv_idle), sizeof(tv_idle));
-#else
     setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, &tv_idle, sizeof(tv_idle));
 #endif
 
