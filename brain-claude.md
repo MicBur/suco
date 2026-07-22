@@ -19,6 +19,34 @@ speed, but be installable in 30 seconds via `apt`.**
   objects from a content-addressed cache.
 - Published publicly: `sudo apt install suco` from https://micbur.github.io/suco.
 
+## Cold-build cost model (where the overhead actually is — 2026-07-22)
+
+Cold builds are SUCO's weak spot (parity with Icecream at best; slower on small/medium projects).
+Measured the per-TU CLIENT overhead with `SUCO_TIMING=1` on a 3.3 MB preprocessed TU:
+`pp≈496ms` (the compiler's `-E` — unavoidable, Icecream pays it too), then the SUCO-specific tax:
+`hset-split≈90ms` (building the two split strings line-by-line) + `prep-store≈52ms` (writing the
+warm-cache seed to disk) + `key+hash≈35ms` (SHA-256 for content-addressing) + `norm≈8ms` ≈
+**185 ms/TU, +37% on top of preprocessing.**
+
+**The strategic finding: that client tax is NOT the dominant cold cost.** Against the GoogleTest
+benchmark (108 files, -j17, cold overhead 33.8 s) the client tax accounts for only ~1.2 s (~4%).
+The rest is the network/dispatch path. Profiled it on the real grid with new `[NET]`/`[NET-CONNECT]`
+timing (SUCO_TIMING, in pipeline_orchestrator + network_client): per TU, `query+sched≈128ms` and
+`dispatch(ship+compile+recv)≈1080ms`. The dispatch is mostly the real remote compile (parallelises
+across workers). The `query+sched≈128ms` was the smell — a LAN round-trip should be ~1ms.
+
+**Root cause found (2026-07-22): `TCP_NODELAY` was never set on ANY socket.** Every small
+request/response (HELLO, HMAC auth, cache query, dispatch headers) ate ~40ms of Nagle+delayed-ACK
+latency per round-trip. Plus `gethostbyname` on the coordinator IP cost ~26ms first-call per
+process. Both are per-TU on the no-daemon path (Windows always; Linux if daemon off) because each
+compiler invocation is a fresh process with an empty connection pool. **Fix:** a `set_tcp_nodelay`
+helper applied on both connect and accept sides (client↔coordinator, client↔worker), and
+`inet_pton` before `gethostbyname`. Client-side alone, verified on the real grid: `query+sched`
+128ms→78ms (~50ms/TU; ~5.4 s on a 108-TU cold build). Server-side NODELAY completes the round-trip
+(realises when the nodes are redeployed). This helps the Linux+daemon path too — every per-TU query
+and dispatch is a small round-trip that Nagle was delaying on both ends. Pure latency change, zero
+byte-identity risk. (Also taken: `std::move` the split strings — memory traffic only.)
+
 ---
 
 ## Current state (2026-07-21)

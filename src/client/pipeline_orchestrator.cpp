@@ -527,6 +527,7 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
         // grid-dispatch branch below can talk to that worker directly.
         std::string assigned_worker_ip;
         uint16_t assigned_worker_port = 0;
+        std::chrono::steady_clock::time_point t_q0{};  // set at cache-query start; used by SUCO_TIMING [NET] log
         if (item.preprocess_success) {
             // Local object cache (content-addressed) — serve a previously built object
             // without any coordinator round-trip or network transfer.
@@ -583,6 +584,7 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
             if (local_slots_ > 0 && !item.cmd.content_hash.empty()) {
                 takeover_check = [this] { return slot_arbiter_->try_acquire(); };
             }
+            t_q0 = std::chrono::steady_clock::now();
             NetworkClient network(config_);
             CacheResult cache_res = network.try_get_from_cache(item.cmd, takeover_check);
             if (cache_res.local_takeover) {
@@ -771,7 +773,9 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                 !assigned_worker_ip.empty() && assigned_worker_port != 0 &&
                 worker_directly_reachable(assigned_worker_ip, config_.coordinator_host)) {
                 NetworkClient dnet(config_);
+                auto t_d0 = std::chrono::steady_clock::now();
                 CompileResult dres = dnet.try_compile_direct(item.cmd, assigned_worker_ip, assigned_worker_port);
+                auto t_d1 = std::chrono::steady_clock::now();
                 if (dres.success && dres.exit_code == 0) {
                     std::filesystem::path out_path(item.cmd.output_file);
                     if (out_path.is_relative() && !context_.cwd.empty()) {
@@ -789,6 +793,11 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                         }
                         direct_dispatch_count_++;
                         local_object_store(config_.cache_directory, item.cmd.content_hash, out_path.string());
+                        if (std::getenv("SUCO_TIMING")) {
+                            auto ms = [](auto a, auto b){ return std::chrono::duration_cast<std::chrono::microseconds>(b-a).count()/1000.0; };
+                            SUCO_LOG_INFO("[NET] {}: query+sched={:.1f}ms dispatch(ship+compile+recv)={:.1f}ms (obj={} bytes)",
+                                          item.cmd.source_file, ms(t_q0, t_d0), ms(t_d0, t_d1), dres.binary.size());
+                        }
                         SUCO_LOG_INFO("Direct dispatch OK for {} (worker {}:{})",
                                       item.cmd.source_file, assigned_worker_ip, assigned_worker_port);
                         {

@@ -110,8 +110,13 @@ CacheResult NetworkClient::try_get_from_cache(const CompilerCommand& cmd,
                                               const std::function<bool()>& local_takeover_check) {
     bool retried = false;
     while (true) {
+        auto _ct0 = std::chrono::steady_clock::now();
         if (!connect_to_coordinator()) {
             return CacheResult{ .hit = false };
+        }
+        if (std::getenv("SUCO_TIMING")) {
+            auto cms = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-_ct0).count()/1000.0;
+            SUCO_LOG_INFO("[NET-CONNECT] connect+handshake={:.1f}ms", cms);
         }
 
         SUCO_LOG_INFO("Querying coordinator cache for {}", cmd.source_file);
@@ -742,12 +747,17 @@ bool NetworkClient::connect_to_coordinator() {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(config_.coordinator_port);
     
-    struct hostent* he = gethostbyname(config_.coordinator_host.c_str());
-    if (!he) {
-        disconnect();
-        return false;
+    // Fast path: coordinator_host is almost always a dotted-quad IP. inet_pton is
+    // instant, whereas gethostbyname on an IP literal still costs ~26 ms on the
+    // first call per process (Windows), paid by every no-daemon TU compile.
+    if (inet_pton(AF_INET, config_.coordinator_host.c_str(), &addr.sin_addr) != 1) {
+        struct hostent* he = gethostbyname(config_.coordinator_host.c_str());
+        if (!he) {
+            disconnect();
+            return false;
+        }
+        std::memcpy(&addr.sin_addr.s_addr, he->h_addr_list[0], static_cast<size_t>(he->h_length));
     }
-    std::memcpy(&addr.sin_addr.s_addr, he->h_addr_list[0], static_cast<size_t>(he->h_length));
 
     int res = connect(sock_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
     if (res < 0) {
@@ -798,6 +808,10 @@ bool NetworkClient::connect_to_coordinator() {
         disconnect();
         return false;
     }
+
+    // Kill Nagle: the handshake + query are small round-trips that otherwise eat
+    // ~40ms of delayed-ACK latency each.
+    suco::set_tcp_nodelay(sock_);
 
 #ifdef _WIN32
     // Winsock SO_RCVTIMEO/SO_SNDTIMEO take a DWORD of MILLISECONDS, not a struct
@@ -1233,6 +1247,9 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         }
     }
     
+    if (conn_ok) {
+        suco::set_tcp_nodelay(sock_);  // dispatch headers are small round-trips before the bulk body
+    }
     if (!conn_ok) {
         SUCO_LOG_ERROR("Failed to connect directly to worker at {}:{}", worker_ip, worker_port);
         close_socket(sock_);

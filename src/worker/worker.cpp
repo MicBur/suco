@@ -789,12 +789,13 @@ void Worker::run_direct_listener_loop() {
         struct sockaddr_in client_addr;
         socklen_t client_addr_len = sizeof(client_addr);
         socket_t client_sock = ::accept(m_direct_listener_sock, reinterpret_cast<struct sockaddr*>(&client_addr), &client_addr_len);
-        
+
         if (client_sock == INVALID_SOCKET_VAL) {
             if (m_shutdown_requested) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
+        suco::set_tcp_nodelay(client_sock);  // direct-dispatch is small headers + one bulk body — no Nagle
 
         // Start thread to handle compile request
         std::thread([this, client_sock]() {

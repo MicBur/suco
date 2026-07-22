@@ -181,8 +181,12 @@ std::string HeaderSetHasher::compute_hash(CompilerCommand& cmd) {
         return "";
     }
 
-    cmd.header_set_source = header_set_source;
-    cmd.stripped_source = stripped_source;
+    // Move, don't copy: these locals are multi-MB (the whole preprocessed TU split in
+    // two) and are not read again after this point — the hash below is fed from
+    // header_paths, flags, compiler version and toolchain, never the source text.
+    // Copying them was ~half of the per-TU "hset+copies" cost on a cold build.
+    cmd.header_set_source = std::move(header_set_source);
+    cmd.stripped_source = std::move(stripped_source);
 
 
     // Create cryptographic hash context

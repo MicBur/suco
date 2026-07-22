@@ -29,6 +29,7 @@
     #include <netdb.h>
     #include <fcntl.h>
     #include <sys/select.h>
+    #include <netinet/tcp.h>   // TCP_NODELAY
     #include <errno.h>
 
     using socket_t = int;
@@ -41,6 +42,20 @@
 // stale SSL* lingering in the registry if the fd number is later reused). No-op
 // when TLS is off. Full tls interface is declared inside namespace suco below.
 namespace suco { namespace tls { void close_tls(socket_t sock); } }
+
+// Disable Nagle's algorithm. SUCO's protocol is a sequence of small
+// request/response round-trips (HELLO handshake, HMAC auth, cache query,
+// dispatch headers). With Nagle on, each small send waits for the peer's ACK,
+// and the peer's delayed-ACK (~40 ms on Windows) stacks onto every round-trip —
+// so a bare cache query cost ~90 ms instead of a few ms. Set on both connect and
+// accept sides. Best-effort: a failure just leaves Nagle on, never fatal.
+namespace suco {
+inline void set_tcp_nodelay(socket_t sock) {
+    int one = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
+               reinterpret_cast<const char*>(&one), sizeof(one));
+}
+}
 
 // Unified socket close: release TLS state first, then close the fd.
 inline void close_socket(socket_t s) {
