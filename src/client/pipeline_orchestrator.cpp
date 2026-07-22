@@ -447,7 +447,14 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                 if (!item.cmd.module_cmis.empty()) {
                     keyed = normalized;
                     for (const auto& [mname, mbytes] : item.cmd.module_cmis) {
-                        keyed += "\x1fCMI\x1f" + mname + "\x1f" + suco::compute_sha256(mbytes);
+                        // NB: the leading token is byte-for-byte "\xfc" "MI" "\x1f" on
+                        // purpose. It was written "\x1fCMI\x1f", but C++'s \x escape is
+                        // greedy: "\x1fC" is one out-of-range hex escape that GCC truncates
+                        // to 0xFC, so the actual bytes fed into the cache key have always
+                        // been {0xFC,'M','I',0x1F} on the grid. MSVC rejects the greedy
+                        // escape outright (C7744). Reproduce the exact grid bytes so module
+                        // cache keys do not drift (invariant: byte-identity of cache keys).
+                        keyed += "\xfc" "MI\x1f" + mname + "\x1f" + suco::compute_sha256(mbytes);
                     }
                     key_input = &keyed;
                 }

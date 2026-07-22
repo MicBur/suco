@@ -1,4 +1,5 @@
 #include "toolchain_manager.h"
+#include "platform_compat.h"
 #include "logging.h"
 #include "hash_util.h"
 

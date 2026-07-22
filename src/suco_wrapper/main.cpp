@@ -33,6 +33,7 @@
 #endif
 
 // ClientConfig einbinden
+#include "../common/platform_compat.h"
 #include "../client/client_config.h"
 #include "../common/zstd_util.h"
 #include "../common/protocol.h"
