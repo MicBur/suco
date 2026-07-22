@@ -230,8 +230,22 @@ cmake --build build_msvc --config Release
 
 > 📖 **Full setup walkthrough (grid, verify, use, auth, troubleshooting): [docs/INSTALL.md](docs/INSTALL.md)**
 
-**Option A — `apt install suco` (recommended):** add the signed APT repo once, then install and upgrade
-like any system package.
+**Option A — one line (recommended):** sets up the signed APT repo and installs suco. Works on
+Debian and Ubuntu.
+
+```bash
+curl -fsSL https://micbur.github.io/suco/install.sh | sudo sh
+```
+
+Then enable the role each node should play (nothing starts automatically):
+
+```bash
+sudo systemctl enable --now suco-worker                    # compile node
+sudo systemctl enable --now suco-coordinator suco-worker   # head node
+suco --version                                             # verify
+```
+
+<details><summary>Option A′ — the same thing by hand (if you'd rather not pipe to a shell)</summary>
 
 ```bash
 curl -fsSL https://micbur.github.io/suco/suco-archive-keyring.asc \
@@ -239,12 +253,8 @@ curl -fsSL https://micbur.github.io/suco/suco-archive-keyring.asc \
 echo "deb [signed-by=/etc/apt/keyrings/suco.asc] https://micbur.github.io/suco stable main" \
   | sudo tee /etc/apt/sources.list.d/suco.list >/dev/null
 sudo apt update && sudo apt install suco
-
-# Nothing starts automatically. Enable the role each node should play:
-sudo systemctl enable --now suco-worker                    # compile node
-sudo systemctl enable --now suco-coordinator suco-worker   # head node
-suco --version                                             # verify
 ```
+</details>
 
 Installs binaries to `/usr/bin/`, systemd units to `/usr/lib/systemd/system/` (shipped **disabled** —
 a fresh install never silently joins a running grid), dashboard to `/usr/share/suco/`. To enable
