@@ -2,8 +2,7 @@ name: CI
 
 on:
   push:
-    # windows-mingw: temporary pre-PR validation of the Windows port — drop after merge.
-    branches: [ main, master, windows-mingw ]
+    branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
 

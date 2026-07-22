@@ -2,7 +2,10 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
-## [Unreleased]
+## [0.10.0] - 2026-07-22
+
+> Version note: releases follow the git-tag series (v0.9.x → v0.10.0). The 2.x headings
+> below predate that decision and stay as history.
 
 ### Added
 - **Native Windows/MinGW port**: all six binaries (`suco`, `suco-cl`, `suco-cl++`, `suco-coordinator`, `suco-worker`, `suco-daemon`) build and run the grid natively under MinGW-w64 GCC (Qt toolchain or MSYS2) — no WSL, no MSVC. Includes OpenSSL 1.1.1 keygen fallback, POSIX→Win32 replacements (`mkdtemp`, process status macros, socket shutdown), and a system-zstd CMake fallback for environments without a vendored build.
