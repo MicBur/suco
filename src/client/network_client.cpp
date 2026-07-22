@@ -799,13 +799,20 @@ bool NetworkClient::connect_to_coordinator() {
         return false;
     }
 
+#ifdef _WIN32
+    // Winsock SO_RCVTIMEO/SO_SNDTIMEO take a DWORD of MILLISECONDS, not a struct
+    // timeval. Passing a timeval made Winsock read its first 4 bytes (tv_sec, ~30)
+    // as a 30 ms timeout, so every cross-LAN recv aborted in ~30 ms and the
+    // coordinator handshake looked like an instant disconnect. Only localhost
+    // (sub-30 ms round trips) ever got through — which is exactly why the grid was
+    // unreachable while loopback tests passed.
+    DWORD timeout_ms = config_.grid_timeout_ms + 30000;
+    setsockopt(sock_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+    setsockopt(sock_, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+#else
     struct timeval tv_timeout{};
     tv_timeout.tv_sec = (config_.grid_timeout_ms / 1000) + 30;
     tv_timeout.tv_usec = 0;
-#ifdef _WIN32
-    setsockopt(sock_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv_timeout), sizeof(tv_timeout));
-    setsockopt(sock_, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv_timeout), sizeof(tv_timeout));
-#else
     setsockopt(sock_, SOL_SOCKET, SO_RCVTIMEO, &tv_timeout, sizeof(tv_timeout));
     setsockopt(sock_, SOL_SOCKET, SO_SNDTIMEO, &tv_timeout, sizeof(tv_timeout));
 #endif
