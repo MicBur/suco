@@ -2,6 +2,11 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.10.4] - 2026-07-22
+
+### Fixed
+- **Windows toolchain archiving** now works: it used to fail on every Windows batch compile because Git's GNU tar (first on PATH) shells `--zstd`/`-I zstd` out to a missing `zstd.exe` and reads the `C:\...` archive path as a remote rmt host. Windows now uses the System32 `bsdtar` (libarchive, zstd built in), which stores relative paths just like the Linux archive. POSIX is unchanged. Not needed for Windows→Linux dispatch (the Linux worker uses its own cross compiler), but removes the noisy error and enables toolchain shipping on pure-Windows grids.
+
 ## [0.10.3] - 2026-07-22
 
 ### Fixed
