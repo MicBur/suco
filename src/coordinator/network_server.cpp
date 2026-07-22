@@ -115,6 +115,9 @@ void NetworkServer::run_tcp_listener() {
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
         socket_t client_sock = accept(m_server_fd, (struct sockaddr*)&client_addr, &addr_len);
+        if (client_sock != INVALID_SOCKET_VAL) {
+            suco::set_tcp_nodelay(client_sock);  // small request/response protocol — no Nagle
+        }
         if (client_sock == INVALID_SOCKET_VAL) {
             if (!m_running) break;
             continue;

@@ -30,12 +30,22 @@ warm-cache seed to disk) + `key+hash≈35ms` (SHA-256 for content-addressing) + 
 
 **The strategic finding: that client tax is NOT the dominant cold cost.** Against the GoogleTest
 benchmark (108 files, -j17, cold overhead 33.8 s) the client tax accounts for only ~1.2 s (~4%).
-The other ~95% is the **network + scheduling + per-TU result upload** path — measurable only on the
-real grid, not on loopback. So cold-build optimization effort belongs on the dispatch/upload path
-(batching, pipelining round-trips, overlapping upload with the next compile), **not** on client-side
-micro-opts. Confirm by profiling a cold build on the real grid with `SUCO_TIMING` before touching
-anything. (Low-risk client wins already taken: `std::move` the split strings instead of copying —
-memory-traffic only, wall-clock within noise on one TU but compounds under -j parallelism.)
+The rest is the network/dispatch path. Profiled it on the real grid with new `[NET]`/`[NET-CONNECT]`
+timing (SUCO_TIMING, in pipeline_orchestrator + network_client): per TU, `query+sched≈128ms` and
+`dispatch(ship+compile+recv)≈1080ms`. The dispatch is mostly the real remote compile (parallelises
+across workers). The `query+sched≈128ms` was the smell — a LAN round-trip should be ~1ms.
+
+**Root cause found (2026-07-22): `TCP_NODELAY` was never set on ANY socket.** Every small
+request/response (HELLO, HMAC auth, cache query, dispatch headers) ate ~40ms of Nagle+delayed-ACK
+latency per round-trip. Plus `gethostbyname` on the coordinator IP cost ~26ms first-call per
+process. Both are per-TU on the no-daemon path (Windows always; Linux if daemon off) because each
+compiler invocation is a fresh process with an empty connection pool. **Fix:** a `set_tcp_nodelay`
+helper applied on both connect and accept sides (client↔coordinator, client↔worker), and
+`inet_pton` before `gethostbyname`. Client-side alone, verified on the real grid: `query+sched`
+128ms→78ms (~50ms/TU; ~5.4 s on a 108-TU cold build). Server-side NODELAY completes the round-trip
+(realises when the nodes are redeployed). This helps the Linux+daemon path too — every per-TU query
+and dispatch is a small round-trip that Nagle was delaying on both ends. Pure latency change, zero
+byte-identity risk. (Also taken: `std::move` the split strings — memory traffic only.)
 
 ---
 
