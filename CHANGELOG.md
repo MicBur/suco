@@ -2,6 +2,11 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.10.1] - 2026-07-22
+
+### Fixed
+- **Debian/Ubuntu mingw cross compilers were not advertised**: the 0.10.0 worker probe dropped `x86_64-w64-mingw32-g++` on Debian/Ubuntu nodes because their mingw-w64 packages report a dotless version (`13-posix`) that `extract_version` rejects — so a node with `mingw-w64` installed still would not serve Windows clients. Falls back to `-dumpversion`'s leading integer; the scheduler matches major versions only. Found by the canary node during the 0.10.0 grid rollout.
+
 ## [0.10.0] - 2026-07-22
 
 > Version note: releases follow the git-tag series (v0.9.x → v0.10.0). The 2.x headings
