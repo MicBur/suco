@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.10.2-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.10.3-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
   <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
@@ -37,7 +37,7 @@ SUCO is a **high-performance, lightweight alternative** to expensive proprietary
 - 🔄 **Least-Recently-Assigned Scheduling** – Fair Round-Robin tie-breaking distributes parallel compile threads uniformly.
 - 🛡️ **Transparent Grid Failover** – If a worker goes offline, the coordinator immediately reschedules the jobs.
 - ↩️ **Resilient Client Fallback** – If the coordinator fails, the client seamlessly falls back to local compilation in <100ms.
-- 🖥️ **Cross-Platform** – Native support for Linux (GCC/Clang) and Windows (MinGW GCC); all six binaries build and run the grid natively on Windows, CI-tested on both platforms. MSVC support is experimental.
+- 🖥️ **Cross-Platform** – Native support for Linux (GCC/Clang) and Windows. All six binaries build and run the grid natively; MinGW GCC is the recommended Windows toolchain (full grid smoke-tested), and MSVC also builds natively — all three (Linux, MinGW, MSVC) are CI-tested.
 - 🪟 **MSVC Environment Detection** – Automatically locates Visual Studio under Windows and imports the MSVC build environment.
 - 🛠️ **CMake & IDE Integration** – Easy integration via `SUCO.cmake` and automatic `compile_commands.json` wrapper prefix cleaning.
 - 🧼 **Grid-Wide Cache Clearing** – Clean all local and remote caches via `suco cache clear`.
@@ -195,7 +195,7 @@ Client, coordinator, and worker use a unified thread-safe logging library:
 |---|---|
 | **Linux** | `build-essential`, `cmake`, `libssl-dev`, `libzstd-dev` |
 | **Windows (MinGW, recommended)** | MinGW-w64 GCC ≥ 13 (e.g. MSYS2 or the Qt toolchain), CMake ≥ 3.15, Ninja, OpenSSL, SQLite3, zstd |
-| **Windows (MSVC, experimental)** | Visual Studio (MSVC), CMake ≥ 3.15, OpenSSL, zstd (via vcpkg) — builds are best-effort, untested |
+| **Windows (MSVC)** | Visual Studio Build Tools (MSVC), CMake ≥ 3.15, OpenSSL + zstd + sqlite3 (via vcpkg) |
 
 ### Building
 
@@ -214,9 +214,9 @@ cmake --build build
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/Tools/mingw1310_64/opt"
 cmake --build build --config Release
 
-# Windows (MSVC, experimental — build-only, not smoke-tested)
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build --config Release
+# Windows (MSVC) — vcpkg install openssl zstd sqlite3 --triplet x64-windows first
+cmake -B build_msvc -S . -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build build_msvc --config Release
 ```
 
 > 🪟 **Windows notes:** run clients with `SUCO_NO_DAEMON=1` (the IPC daemon uses Unix sockets).
@@ -299,7 +299,7 @@ suco g++ -O3 -std=c++20 -c myfile.cpp -o myfile.o
 $env:SUCO_NO_DAEMON = "1"
 .\suco-cl++.exe -O2 -std=c++20 -c myfile.cpp -o myfile.o
 
-# Windows (MSVC, experimental)
+# Windows (MSVC)
 suco cl.exe /O2 /EHsc /c myfile.cpp /Fo myfile.obj
 
 # In CMake Lists
