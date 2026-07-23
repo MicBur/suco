@@ -74,6 +74,10 @@ jobs:
 
       # Same staged payload as the zip, so installer and zip ship identical
       # binaries. NSIS is preinstalled on windows-latest.
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
       - name: Build installer
         shell: pwsh
         run: |

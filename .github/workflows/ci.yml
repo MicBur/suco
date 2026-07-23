@@ -163,6 +163,10 @@ jobs:
           "stub" | Out-File -Encoding ascii "$d\README-windows.txt"
           "stub" | Out-File -Encoding ascii "$d\suco-cl.exe"
 
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
       - name: Compile installer script
         shell: pwsh
         run: |
