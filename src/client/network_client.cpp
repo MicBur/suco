@@ -34,6 +34,43 @@ struct ConnectionPoolEntry {
 std::mutex g_pool_mutex;
 std::vector<ConnectionPoolEntry> g_pool;
 
+// --- COORDINATOR CIRCUIT BREAKER ---
+// An unreachable coordinator used to cost connection_timeout_ms on *every*
+// attempt, and a single TU makes ~59 of them (cache query, header-set query,
+// batch send, result upload, plus the backpressure re-query loop). At the
+// 3000ms default that turned a one-second local compile into a ~3 minute one —
+// technically still a correct build, which is exactly why it went unnoticed.
+//
+// After g_cb_threshold consecutive connect failures we declare the coordinator
+// down and fail fast for g_cb_cooldown, so the client drops straight to its
+// local fallback. Any successful connect resets the breaker, so a coordinator
+// that comes back is picked up again (this matters for the long-lived daemon;
+// a one-shot suco-cl++ simply stays local for the rest of its run).
+constexpr int g_cb_threshold = 2;
+constexpr auto g_cb_cooldown = std::chrono::seconds(30);
+std::mutex g_cb_mutex;
+int g_cb_failures = 0;
+std::chrono::steady_clock::time_point g_cb_down_until{};
+
+// True while the breaker is open (coordinator presumed down).
+bool coordinator_circuit_open() {
+    std::lock_guard<std::mutex> lock(g_cb_mutex);
+    return g_cb_down_until > std::chrono::steady_clock::now();
+}
+
+void coordinator_connect_succeeded() {
+    std::lock_guard<std::mutex> lock(g_cb_mutex);
+    g_cb_failures = 0;
+    g_cb_down_until = {};
+}
+
+void coordinator_connect_failed() {
+    std::lock_guard<std::mutex> lock(g_cb_mutex);
+    if (++g_cb_failures >= g_cb_threshold) {
+        g_cb_down_until = std::chrono::steady_clock::now() + g_cb_cooldown;
+    }
+}
+
 std::string get_local_toolchain_archive(const std::string& hash) {
     std::string cache_dir = get_toolchain_cache_dir();
     std::error_code ec;
@@ -703,7 +740,28 @@ bool NetworkClient::send_module_cmis(const CompilerCommand& cmd) {
     return true;
 }
 
+bool NetworkClient::coordinator_presumed_down() {
+    return coordinator_circuit_open();
+}
+
 bool NetworkClient::connect_to_coordinator() {
+    // Already-established sockets bypass the breaker entirely.
+    if (is_connected_) {
+        return true;
+    }
+    if (coordinator_circuit_open()) {
+        return false;   // presumed down — let the caller fall back locally
+    }
+    const bool ok = connect_to_coordinator_impl();
+    if (ok) {
+        coordinator_connect_succeeded();
+    } else {
+        coordinator_connect_failed();
+    }
+    return ok;
+}
+
+bool NetworkClient::connect_to_coordinator_impl() {
     if (is_connected_) {
         return true;
     }

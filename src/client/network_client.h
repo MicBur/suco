@@ -173,6 +173,16 @@ private:
     bool send_module_cmis(const CompilerCommand& cmd);
 
     bool connect_to_coordinator();
+    // Raw connect without the circuit breaker; call connect_to_coordinator().
+    bool connect_to_coordinator_impl();
+
+public:
+    // True once repeated connects have failed and the coordinator is presumed
+    // down. Callers that would otherwise wait on the grid (backpressure polling)
+    // should bail out and compile locally instead.
+    static bool coordinator_presumed_down();
+
+private:
 
     /**
      * @brief Closes the active socket connection if open.
