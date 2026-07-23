@@ -692,6 +692,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
         m_state.cache_misses++;
         m_state.mutex.unlock();
 
+        SUCO_LOG_INFO("[TOSDBG] hash={} req_comp='{}' -> target={}", hash.substr(0,8), query_required_compiler, target_os_from_command(query_required_compiler));
         // 1. Wähle besten Worker für die direkte Kompilierung aus
         auto query_active_workers = m_worker_manager.get_active_workers();
         Job query_current_job;
