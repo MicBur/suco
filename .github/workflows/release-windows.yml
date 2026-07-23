@@ -84,7 +84,10 @@ jobs:
           $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
           if (-not (Test-Path $nsis)) { $nsis = "$env:ProgramFiles\NSIS\makensis.exe" }
           if (-not (Test-Path $nsis)) { throw "makensis not found" }
-          & $nsis /DVERSION="$env:VER" /DSRCDIR="dist\$env:OUT" packaging\windows\suco.nsi
+          # Absolute: NSIS resolves relative paths against the .nsi's own
+          # directory, so "dist\..." would be looked up under packaging\windows\.
+          $src = (Resolve-Path "dist\$env:OUT").Path
+          & $nsis /DVERSION="$env:VER" /DSRCDIR="$src" packaging\windows\suco.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
           Move-Item "packaging\windows\suco-$env:VER-windows-x64-setup.exe" "dist\" -Force
           Get-ChildItem dist\*.exe, dist\*.zip | Select-Object Name, Length
