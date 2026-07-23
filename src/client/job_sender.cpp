@@ -103,7 +103,9 @@ int JobSender::process_job_pipeline(JobItem& item, NetworkClient& network) {
     }
 
     // Compute header set hash and split source
-    HeaderSetHasher::compute_hash(cmd);
+    if (config_.header_cache_enabled) {
+        HeaderSetHasher::compute_hash(cmd);
+    }
 
     if (!cmd.header_set_hash.empty()) {
         cmd.preprocessed_source = cmd.stripped_source;

@@ -467,7 +467,7 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                     // in gcm.cache and ignores -o, so no .gch is ever produced — the worker
                     // would then compile header-stripped source with no headers at all.
                     // Module TUs therefore ship their full preprocessed source.
-                    if (item.cmd.module_cmis.empty()) {
+                    if (item.cmd.module_cmis.empty() && config_.header_cache_enabled) {
                         HeaderSetHasher::compute_hash(item.cmd);
                     }
 
