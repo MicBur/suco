@@ -175,7 +175,14 @@ ClientConfig ClientConfig::load_or_default() {
     config.log_level = "INFO";
     config.pipeline_aggressiveness = "medium";
     config.max_inflight_batches = 4;
-    config.header_cache_enabled = true;
+    // Header-set splitting is DISABLED by default: the split cannot be reassembled
+    // into a well-formed TU, so remote compiles fail on any real project (#15).
+    // Two independent defects: the <built-in> preamble is classified as non-header
+    // and lands after the system headers that need its macros, and dropping the
+    // system-header line markers breaks linemarker nesting. Without the split the
+    // client ships the full preprocessed source - larger payload, but correct.
+    // Re-enable with SUCO_HEADER_CACHE_ENABLED=1 once #15 is fixed.
+    config.header_cache_enabled = false;
     config.local_prep_cache_enabled = true;
     config.header_cache_directory = get_default_header_cache_directory();
     config.header_cache_max_size_gb = 8;
@@ -311,7 +318,14 @@ ClientConfig ClientConfig::load_or_default(const std::map<std::string, std::stri
     config.log_level = "INFO";
     config.pipeline_aggressiveness = "medium";
     config.max_inflight_batches = 4;
-    config.header_cache_enabled = true;
+    // Header-set splitting is DISABLED by default: the split cannot be reassembled
+    // into a well-formed TU, so remote compiles fail on any real project (#15).
+    // Two independent defects: the <built-in> preamble is classified as non-header
+    // and lands after the system headers that need its macros, and dropping the
+    // system-header line markers breaks linemarker nesting. Without the split the
+    // client ships the full preprocessed source - larger payload, but correct.
+    // Re-enable with SUCO_HEADER_CACHE_ENABLED=1 once #15 is fixed.
+    config.header_cache_enabled = false;
     config.local_prep_cache_enabled = true;
     config.header_cache_directory = get_default_header_cache_directory();
     config.header_cache_max_size_gb = 8;

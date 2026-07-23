@@ -26,6 +26,33 @@ Per-round wall times (linux / windows / local):
 Object sanity every run: 48/48 ELF for Linux, 48/48 COFF for Windows — a
 silently-failed cross-compile cannot masquerade as a fast round.
 
+## Real project: SUCO building itself
+
+The synthetic figures above use uniform TUs with only system headers. A real
+build also has a dependency graph, mixed TU sizes, serial link steps, and TUs
+that bypass the grid entirely. Building SUCO through SUCO (46 C++ TUs, 8-core
+client, four-node grid):
+
+| Scenario | Wall | vs. local |
+|---|---|---|
+| local `g++ -j8` | 88.6 s | 1.00x |
+| SUCO grid `-j16`, cold | 57.6 s | **1.54x** |
+| SUCO grid `-j16`, warm cache | 57.5 s | 1.54x |
+
+**1.54x, not the synthetic 3.34x.** The gap is the honest part. A real build
+cannot parallelise past its dependency graph, the link steps are serial and
+local, and SUCO's own sources use `__DATE__`/`__TIME__`, which forces those TUs
+to compile locally and bypass the cache ("uses `__DATE__`/`__TIME__` — compiling
+locally, bypassing cache"). That last point also explains why the warm run does
+not beat the cold one here.
+
+Treat the synthetic number as the grid's ceiling and this one as what a real
+project sees.
+
+> This benchmark was only measurable after #15: until then the header-set split
+> produced a translation unit the worker could not compile, so a real project
+> failed to build through the grid at all.
+
 ## Proof the work actually spreads across the grid
 
 A speedup number alone does not prove multi-node execution — a fast round could

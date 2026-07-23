@@ -152,7 +152,9 @@ void BatchSender::process_batch(std::vector<JobItem>& batch) {
 
         // Compute header set hash and split source
         item.cmd.preprocessed_source = item.preprocess_output;
-        HeaderSetHasher::compute_hash(item.cmd);
+        if (config_.header_cache_enabled) {
+            HeaderSetHasher::compute_hash(item.cmd);
+        }
 
         if (!item.cmd.header_set_hash.empty()) {
             item.cmd.preprocessed_source = item.cmd.stripped_source;
