@@ -361,7 +361,9 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                 std::string uploader = (client_ip.empty() || client_ip == "127.0.0.1")
                                            ? "local" : client_ip;
                 std::string node_name = worker_node ? worker_node->name : uploader;
-                RecentJob rj{ filename, exit_code, false, node_name };
+                std::string tos = m_cache ? m_cache->get_meta_target_os(hash) : "";
+                if (tos.empty()) tos = "linux";
+                RecentJob rj{ filename, exit_code, false, node_name, tos };
                 m_state.recent_jobs.push_back(rj);
                 if (m_state.recent_jobs.size() > 20) {
                     m_state.recent_jobs.erase(m_state.recent_jobs.begin());
@@ -573,7 +575,9 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                     }
                     display_name += " (from " + origin_node + ")";
                 }
-                RecentJob rj{ query_filename, 0, true, display_name };
+                std::string hit_tos = m_cache ? m_cache->get_meta_target_os(hash) : "";
+                if (hit_tos.empty()) hit_tos = "linux";
+                RecentJob rj{ query_filename, 0, true, display_name, hit_tos };
                 m_state.recent_jobs.push_back(rj);
                 if (m_state.recent_jobs.size() > 20) {
                     m_state.recent_jobs.erase(m_state.recent_jobs.begin());
@@ -1090,7 +1094,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
             }
         }
 
-        RecentJob rj{ filename, exit_code, false, worker_name };
+        RecentJob rj{ filename, exit_code, false, worker_name, target_os_from_command(command) };
         m_state.recent_jobs.push_back(rj);
         if (m_state.recent_jobs.size() > 20) {
             m_state.recent_jobs.erase(m_state.recent_jobs.begin());

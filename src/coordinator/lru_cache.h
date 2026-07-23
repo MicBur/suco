@@ -253,6 +253,29 @@ public:
         return "";
     }
 
+    // Derive the target OS ("windows"/"linux") of a cache entry from the
+    // compiler_command stored in its .meta file. Returns "" if unknown, so the
+    // caller can fall back to a default.
+    std::string get_meta_target_os(const std::string& hash) {
+        auto paths = get_cache_paths(hash);
+        if (paths.first.empty()) return "";
+        std::string meta_path = paths.first.substr(0, paths.first.size() - 2) + ".meta";
+        if (!std::filesystem::exists(meta_path)) return "";
+        std::ifstream meta_file(meta_path);
+        if (!meta_file.is_open()) return "";
+        std::string line;
+        while (std::getline(meta_file, line)) {
+            if (line.find("\"compiler_command\":") == std::string::npos) continue;
+            if (line.find("mingw")    != std::string::npos ||
+                line.find("cl.exe")   != std::string::npos ||
+                line.find("clang-cl") != std::string::npos) {
+                return "windows";
+            }
+            return "linux";
+        }
+        return "";
+    }
+
     // Scan directory and perform LRU eviction if size limit is exceeded
 
     void clean_up_lru() {

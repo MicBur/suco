@@ -827,9 +827,13 @@
                             const tr = document.createElement('tr');
                             tr.id = `job-row-${job.id}`;
                             const durationSec = (job.duration_ms / 1000).toFixed(1);
+                            const isWinTarget = job.target_os === 'windows';
+                            const osBadge = isWinTarget
+                                ? '<span class="badge" style="background:rgba(0,173,239,0.15);color:#00adef;border:1px solid rgba(0,173,239,0.3);" title="Windows-Ziel (Cross-Compile)">⊞ Win</span>'
+                                : '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);" title="Linux-Ziel">🐧 Linux</span>';
                             tr.innerHTML = `
                                 <td style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--primary);">${job.client_ip}</td>
-                                <td><span class="code" style="color: var(--primary); font-weight: 700;">${job.filename}</span></td>
+                                <td><span class="code" style="color: var(--primary); font-weight: 700;">${job.filename}</span> ${osBadge}</td>
                                 <td><span class="code">${job.command}</span></td>
                                 <td style="font-family: 'JetBrains Mono', monospace; font-weight: 700;" id="job-time-${job.id}">${durationSec}s</td>
                             `;
@@ -853,12 +857,17 @@
                                 : '<span class="badge badge-miss">Compile</span>';
                             
                             const workerText = job.worker_name ? job.worker_name : 'unknown';
-                            const workerBadge = job.cache_hit 
+                            const workerBadge = job.cache_hit
                                 ? '<span class="badge badge-hit" style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.25);">Cache</span>'
                                 : `<span class="badge" style="background: rgba(99,102,241,0.15); color: #6366f1; border: 1px solid rgba(99,102,241,0.25); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">${workerText}</span>`;
 
+                            const recIsWin = job.target_os === 'windows';
+                            const recOsBadge = recIsWin
+                                ? '<span class="badge" style="background:rgba(0,173,239,0.15);color:#00adef;border:1px solid rgba(0,173,239,0.3);" title="Windows-Ziel (Cross-Compile)">⊞ Win</span>'
+                                : '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);" title="Linux-Ziel">🐧 Linux</span>';
+
                             tr.innerHTML = `
-                                <td><span class="code" style="max-width: 180px;">${job.filename}</span></td>
+                                <td><span class="code" style="max-width: 180px;">${job.filename}</span> ${recOsBadge}</td>
                                 <td>
                                     <div class="status-badge" style="color: ${statusColor};">
                                         <div class="status-dot" style="background-color: ${statusDot};"></div>

@@ -457,6 +457,12 @@ void Coordinator::run_web_server() {
                             json << "      \"worker_ip\": \"" << job.worker_ip << "\",\n";
                             json << "      \"client_ip\": \"" << job.client_ip << "\",\n";
                             json << "      \"command\": \"" << escape_json_string(job.command) << "\",\n";
+                            // Target OS of the compile (what's being built), not the worker's OS:
+                            // a mingw/cl compiler means a Windows object even on a Linux worker.
+                            const bool win_target = job.command.find("mingw") != std::string::npos
+                                                 || job.command.find("cl.exe") != std::string::npos
+                                                 || job.command.find("clang-cl") != std::string::npos;
+                            json << "      \"target_os\": \"" << (win_target ? "windows" : "linux") << "\",\n";
                             json << "      \"duration_ms\": " << elapsed << "\n";
                             json << "    }";
                             if (i + 1 < m_state.active_jobs.size()) json << ",";
@@ -497,7 +503,8 @@ void Coordinator::run_web_server() {
                             json << "      \"filename\": \"" << escape_json_string(rj.filename) << "\",\n";
                             json << "      \"exit_code\": " << rj.exit_code << ",\n";
                             json << "      \"cache_hit\": " << (rj.cache_hit ? "true" : "false") << ",\n";
-                            json << "      \"worker_name\": \"" << escape_json_string(rj.worker_name) << "\"\n";
+                            json << "      \"worker_name\": \"" << escape_json_string(rj.worker_name) << "\",\n";
+                            json << "      \"target_os\": \"" << (rj.target_os.empty() ? "linux" : rj.target_os) << "\"\n";
                             json << "    }";
                             if (i + 1 < m_state.recent_jobs.size()) json << ",";
                             json << "\n";
