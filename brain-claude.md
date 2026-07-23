@@ -138,6 +138,49 @@ strings — memory traffic only.)
    by `Direct dispatch OK` plus a worker-side `Exit: 0`, never by a green build and never by
    `Cache hit` (which proves only the cache path).
 
+10. **The header-set split is not reassemblable — it was never a working optimisation (#15).**
+   `header_set_hasher.cpp` classifies preprocessed output line-by-line into "system headers"
+   (shipped once, cached, optionally PCH'd) and "stripped source". Concatenating the two back
+   does NOT reproduce the input. Proven outside SUCO: the original `.ii` compiles clean, the
+   reassembly yields **758 errors**. Two independent defects — (a) the `<built-in>`/
+   `<command-line>` preamble is classified as non-header, so the predefined macros land AFTER
+   the system headers that use them (`'__SIZE_TYPE__' does not name a type`); fixing only this
+   gets 758 → 44; (b) markers of stripped system headers are dropped by design, but line
+   markers NEST, so the remaining ones are unmatched (`linemarker ignored due to incorrect
+   nesting`) and the content after them is misattributed (`expected declaration before '}'`,
+   `field 'ip_dst' has incomplete type`). Consequence: **any project with a realistic header
+   set failed to build on the grid**, and failed it outright — the worker returns exit 1, which
+   the client treats as a real compile error, so invariant #3 never engaged. Mitigated by
+   disabling the split by default; the switch `SUCO_HEADER_CACHE_ENABLED` had never actually
+   gated the splitting, only the worker's PCH choice, which is why "turning it off" appeared to
+   change nothing. Trivial TUs (system headers only) take a different path and compile fine —
+   which is exactly why every smoke test passed for so long.
+11. **An unreachable coordinator cost ~3 minutes per TU, not one second.** A single TU opens
+   ~59 coordinator connections (cache query, header-set query, batch send, result upload, plus
+   the backpressure re-query loop); each paid the full `connection_timeout_ms` (3000 ms). The
+   build still produced a correct object via the local fallback — invariant #3 again masking a
+   pathology. Fixed with a process-wide circuit breaker (2 consecutive failures → fail fast for
+   30 s; any success resets it, which matters for the long-lived daemon). 181 s → 8 s.
+   **Rule of thumb: SUCO must never make a build slower than compiling locally.**
+
+## Test-harness traps that cost real time (2026-07-23)
+
+These produced false bug reports before they were understood. All are MY errors, not SUCO's:
+
+- **`SUCO_COORDINATOR` does not exist — it is `SUCO_COORDINATOR_HOST`.** Setting the wrong name
+  silently leaves the client on the `127.0.0.1` default. It looks exactly like "the grid is
+  broken", and it also explains a node that appeared unable to reach the coordinator.
+- **On Windows the client defaults to `cl.exe`, not g++.** `suco-cl++ -c x.cpp` with no
+  `SUCO_REAL_CXX` and no MSVC environment exits with almost no output. For the MinGW/grid path
+  set `SUCO_REAL_CXX=g++`; for MSVC run inside `vcvars64.bat` (VS 2022 **BuildTools** here).
+- **PowerShell swallows a native tool's stderr** when the tool is run through it — a failing
+  `cmake --build` showed `FAILED` lines with zero diagnostics. Run such builds from bash with
+  `> log 2>&1`.
+- **`/dev/null` breaks the MinGW assembler** (`can't create nul`). Write to a real temp object.
+- **A file in `/tmp` you cannot overwrite yields a stale `tail`.** A redirect failing made a
+  successful command look like a failure and showed another session's log. Write logs into a
+  directory you created.
+
 ## Diagnostic discipline
 
 The obvious hypothesis was wrong several times; only instrumentation found the real cause. Use the
