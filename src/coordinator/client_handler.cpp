@@ -361,7 +361,15 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                 std::string uploader = (client_ip.empty() || client_ip == "127.0.0.1")
                                            ? "local" : client_ip;
                 std::string node_name = worker_node ? worker_node->name : uploader;
-                std::string tos = m_cache ? m_cache->get_meta_target_os(hash) : "";
+                // Target OS was captured from the query's required_compiler (the store
+                // packet has no command). Fall back to the cache meta, then linux.
+                std::string tos;
+                auto it_tos = m_state.hash_to_target_os.find(hash);
+                if (it_tos != m_state.hash_to_target_os.end()) {
+                    tos = it_tos->second;
+                    m_state.hash_to_target_os.erase(it_tos);
+                }
+                if (tos.empty() && m_cache) tos = m_cache->get_meta_target_os(hash);
                 if (tos.empty()) tos = "linux";
                 RecentJob rj{ filename, exit_code, false, node_name, tos };
                 m_state.recent_jobs.push_back(rj);
@@ -692,7 +700,6 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
         m_state.cache_misses++;
         m_state.mutex.unlock();
 
-        SUCO_LOG_INFO("[TOSDBG] hash={} req_comp='{}' -> target={}", hash.substr(0,8), query_required_compiler, target_os_from_command(query_required_compiler));
         // 1. Wähle besten Worker für die direkte Kompilierung aus
         auto query_active_workers = m_worker_manager.get_active_workers();
         Job query_current_job;
