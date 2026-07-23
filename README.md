@@ -197,6 +197,13 @@ Client, coordinator, and worker use a unified thread-safe logging library:
 | **Windows (MinGW, recommended)** | MinGW-w64 GCC ≥ 13 (e.g. MSYS2 or the Qt toolchain), CMake ≥ 3.15, Ninja, OpenSSL, SQLite3, zstd |
 | **Windows (MSVC)** | Visual Studio Build Tools (MSVC), CMake ≥ 3.15, OpenSSL + zstd + sqlite3 (via vcpkg) |
 
+### Windows: prebuilt binaries
+
+Don't want to build? Grab the self-contained
+**[`suco-<version>-windows-x64.zip`](https://github.com/MicBur/suco/releases/latest)**
+from the latest release — the six `.exe` plus the runtime DLLs they need, no toolchain
+required. Run clients with `SUCO_NO_DAEMON=1`.
+
 ### Building
 
 ```bash
