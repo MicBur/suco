@@ -22,11 +22,25 @@ struct ActiveJob {
     std::chrono::steady_clock::time_point start_time;
 };
 
+// Klassifiziert das Ziel-Betriebssystem eines Compile-Kommandos.
+// Windows-Cross-Targets erkennt man am Compiler-Namen (MinGW-Triple / MSVC).
+// Rückgabe: "windows", "linux" (Default) — nie leer, damit das Dashboard
+// immer ein Badge zeigen kann.
+inline std::string target_os_from_command(const std::string& cmd) {
+    if (cmd.find("mingw")    != std::string::npos ||
+        cmd.find("cl.exe")   != std::string::npos ||
+        cmd.find("clang-cl") != std::string::npos) {
+        return "windows";
+    }
+    return "linux";
+}
+
 struct RecentJob {
     std::string filename;
     int32_t exit_code;
     bool cache_hit;
     std::string worker_name;
+    std::string target_os; // "windows" | "linux"
 };
 
 struct CompileResult {
@@ -90,6 +104,9 @@ struct SharedCoordinatorState {
     // T12: Track start times and filenames for SQLite logging on direct path compile store
     std::unordered_map<std::string, int64_t> hash_to_start_time;
     std::unordered_map<std::string, std::string> hash_to_filename;
+    // Target OS ("windows"/"linux") derived from the query's required_compiler, so the
+    // direct-dispatch store (where the command string is empty) can still label the job.
+    std::unordered_map<std::string, std::string> hash_to_target_os;
 
     std::mutex known_header_sets_mutex;
     std::unordered_set<std::string> known_header_sets;
