@@ -44,7 +44,7 @@ jobs:
         shell: msys2 {0}
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"
-          else VER="$(grep -oE 'VERSION [0-9.]+' CMakeLists.txt | head -1 | awk '{print $2}')"; fi
+          else VER="$(grep -oE 'project\(suco VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')"; fi
           OUT="suco-${VER}-windows-x64"
           mkdir -p "dist/$OUT"
           cp build/suco.exe build/suco-cl.exe build/suco-cl++.exe \
