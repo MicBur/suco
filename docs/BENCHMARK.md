@@ -26,6 +26,29 @@ Per-round wall times (linux / windows / local):
 Object sanity every run: 48/48 ELF for Linux, 48/48 COFF for Windows — a
 silently-failed cross-compile cannot masquerade as a fast round.
 
+## Proof the work actually spreads across the grid
+
+A speedup number alone does not prove multi-node execution — a fast round could
+in principle come from one strong node. Measured job distribution for one
+48-TU round (`/api/timeline`):
+
+| Node | Jobs | Share | Cores |
+|---|---|---|---|
+| node1 | 17 | 28.3% | 4 |
+| node2 | 17 | 28.3% | 4 |
+| k3master | 9 | 15.0% | 4 (also client + coordinator) |
+| Brain-OS | 5 | 8.3% | 2 |
+
+17+17+9+5 = 48, i.e. every TU accounted for, and the split tracks each node's
+capacity. k3master takes less than its core count suggests because it is also
+running the client and coordinator.
+
+The stronger check is slot utilisation: median worker-side compile time was
+**661 ms** (min 433, max 938), so 48 TUs represent ~31.7 s of serial compile
+work — delivered in ~2.5 s wall. That is **~12.7x effective parallelism across
+13 slots (~98% utilisation)**, which is only reachable if all four nodes are
+genuinely compiling at once.
+
 ## Reading the numbers
 
 **The grid is worth ~3.3x on a cold build** for this workload, and a warm cache
