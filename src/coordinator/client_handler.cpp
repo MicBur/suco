@@ -575,8 +575,13 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                     }
                     display_name += " (from " + origin_node + ")";
                 }
-                std::string hit_tos = m_cache ? m_cache->get_meta_target_os(hash) : "";
-                if (hit_tos.empty()) hit_tos = "linux";
+                // Prefer the query's required_compiler (authoritative, in scope here);
+                // fall back to the cache entry's stored command for older clients.
+                std::string hit_tos = target_os_from_command(query_required_compiler);
+                if (hit_tos == "linux" && m_cache) {
+                    std::string meta_tos = m_cache->get_meta_target_os(hash);
+                    if (!meta_tos.empty()) hit_tos = meta_tos;
+                }
                 RecentJob rj{ query_filename, 0, true, display_name, hit_tos };
                 m_state.recent_jobs.push_back(rj);
                 if (m_state.recent_jobs.size() > 20) {
@@ -741,14 +746,16 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
             m_state.hash_to_start_time[hash] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 job_start_system.time_since_epoch()).count();
             m_state.hash_to_filename[hash] = query_filename;
-            
-            SUCO_LOG_INFO("Coordinator: Assigned hash {} directly to worker {} ({}:{})", 
+            m_state.hash_to_target_os[hash] = target_os_from_command(query_required_compiler);
+
+            SUCO_LOG_INFO("Coordinator: Assigned hash {} directly to worker {} ({}:{})",
                           hash, query_best_worker->name, query_worker_ip, direct_port);
         } else {
             std::lock_guard<std::mutex> lock(m_state.mutex);
             m_state.hash_to_start_time[hash] = std::chrono::duration_cast<std::chrono::milliseconds>(
                 job_start_system.time_since_epoch()).count();
             m_state.hash_to_filename[hash] = query_filename;
+            m_state.hash_to_target_os[hash] = target_os_from_command(query_required_compiler);
             SUCO_LOG_WARNING("Coordinator: No compatible worker found for hash {}", hash);
             if (g_slot_dbg) {
                 std::string grid;
@@ -1094,7 +1101,19 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
             }
         }
 
-        RecentJob rj{ filename, exit_code, false, worker_name, target_os_from_command(command) };
+        // The store packet's command is empty on this path; the target was captured from
+        // the query's required_compiler. Fall back to the command classifier if absent.
+        std::string store_tos;
+        {
+            auto it_tos = m_state.hash_to_target_os.find(hash);
+            if (it_tos != m_state.hash_to_target_os.end()) {
+                store_tos = it_tos->second;
+                m_state.hash_to_target_os.erase(it_tos);
+            }
+        }
+        if (store_tos.empty()) store_tos = target_os_from_command(command);
+
+        RecentJob rj{ filename, exit_code, false, worker_name, store_tos };
         m_state.recent_jobs.push_back(rj);
         if (m_state.recent_jobs.size() > 20) {
             m_state.recent_jobs.erase(m_state.recent_jobs.begin());
