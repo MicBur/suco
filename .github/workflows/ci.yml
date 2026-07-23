@@ -141,3 +141,34 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+  # The installer only gets built for real on a version tag (release-windows.yml),
+  # so without this the NSIS script would stay unverified until release day.
+  # Compile it here against a stub payload: catches syntax, missing files and
+  # bad section/macro references in seconds, on every PR.
+  installer-script:
+    name: Windows Installer Script
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Stage a stub payload
+        shell: pwsh
+        run: |
+          $d = "dist\stub"
+          New-Item -ItemType Directory -Force -Path $d | Out-Null
+          Copy-Item LICENSE   "$d\LICENSE"
+          Copy-Item README.md "$d\README.md"
+          "stub" | Out-File -Encoding ascii "$d\README-windows.txt"
+          "stub" | Out-File -Encoding ascii "$d\suco-cl.exe"
+
+      - name: Compile installer script
+        shell: pwsh
+        run: |
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { $nsis = "$env:ProgramFiles\NSIS\makensis.exe" }
+          if (-not (Test-Path $nsis)) { throw "makensis not found on the runner" }
+          & $nsis /DVERSION="0.0.0-ci" /DSRCDIR="dist\stub" packaging\windows\suco.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+          Get-ChildItem packaging\windows\*.exe | Select-Object Name, Length
