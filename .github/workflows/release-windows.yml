@@ -1,0 +1,80 @@
+name: Publish Windows binaries
+
+# Builds the native MinGW binaries and attaches a self-contained
+# suco-<version>-windows-x64.zip (the six .exe plus the non-system DLLs they
+# need) to the GitHub Release, so Windows users can download and run without
+# installing a toolchain. Runs on a version tag; workflow_dispatch republishes
+# the current version.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # upload release assets
+
+jobs:
+  windows-zip:
+    name: Windows x64 zip
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 / MinGW64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-sqlite3
+            mingw-w64-x86_64-zstd
+
+      - name: Build (Release)
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j "$(nproc)"
+
+      - name: Collect binaries + runtime DLLs
+        shell: msys2 {0}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"
+          else VER="$(grep -oE 'VERSION [0-9.]+' CMakeLists.txt | head -1 | awk '{print $2}')"; fi
+          OUT="suco-${VER}-windows-x64"
+          mkdir -p "dist/$OUT"
+          cp build/suco.exe build/suco-cl.exe build/suco-cl++.exe \
+             build/suco-coordinator.exe build/suco-worker.exe build/suco-daemon.exe "dist/$OUT/"
+          # Bundle every non-system DLL the binaries pull in (OpenSSL, libstdc++,
+          # libgcc, winpthread, …) so the zip runs on a clean Windows. Discover
+          # them with ldd rather than hardcoding version-suffixed names.
+          for exe in dist/$OUT/*.exe; do ldd "$exe"; done \
+            | grep -iE '/mingw64/' | awk '{print $3}' | sort -u \
+            | while read -r dll; do cp -n "$dll" "dist/$OUT/"; done
+          cp README.md LICENSE "dist/$OUT/" 2>/dev/null || true
+          cat > "dist/$OUT/README-windows.txt" <<TXT
+          SUCO $VER — Windows x64 (MinGW)
+
+          These are the SUCO binaries plus the runtime DLLs they need — no install
+          required, just run them. Windows clients must run with SUCO_NO_DAEMON=1
+          (the IPC daemon uses Unix sockets). See README.md for usage, and the
+          project page: https://github.com/MicBur/suco
+          TXT
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          echo "Bundled:"; ls "dist/$OUT"
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path "dist/$env:OUT/*" -DestinationPath "dist/$env:OUT.zip" -Force
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VER }}
+          files: dist/${{ env.OUT }}.zip
+          fail_on_unmatched_files: true
