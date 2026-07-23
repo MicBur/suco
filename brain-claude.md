@@ -41,11 +41,13 @@ latency per round-trip. Plus `gethostbyname` on the coordinator IP cost ~26ms fi
 process. Both are per-TU on the no-daemon path (Windows always; Linux if daemon off) because each
 compiler invocation is a fresh process with an empty connection pool. **Fix:** a `set_tcp_nodelay`
 helper applied on both connect and accept sides (client↔coordinator, client↔worker), and
-`inet_pton` before `gethostbyname`. Client-side alone, verified on the real grid: `query+sched`
-128ms→78ms (~50ms/TU; ~5.4 s on a 108-TU cold build). Server-side NODELAY completes the round-trip
-(realises when the nodes are redeployed). This helps the Linux+daemon path too — every per-TU query
-and dispatch is a small round-trip that Nagle was delaying on both ends. Pure latency change, zero
-byte-identity risk. (Also taken: `std::move` the split strings — memory traffic only.)
+`inet_pton` before `gethostbyname`. **Both-ends result, verified on the real grid after deploying v0.10.5 to all 4 nodes** (same TU
+type, before = 0.10.1 nodes + old client): `query+sched` 128ms→~22ms, and — the surprise —
+`dispatch(ship+compile+recv)` ~760ms→~330ms, because the dispatch protocol's small header
+round-trips between bulk transfers were ALSO Nagle-delayed (~430ms of delayed-ACK removed).
+**Net per TU ~838ms→~352ms — over half gone**, from one missing `setsockopt`. This is the
+cold-build lever. Pure latency change, zero byte-identity risk. (Also taken: `std::move` the split
+strings — memory traffic only.)
 
 ---
 
