@@ -627,7 +627,10 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                 int backoff_ms = 50;
                 bool logged = false;
                 while (cache_res.worker_ip.empty() && !cache_res.hit && !cache_res.wait &&
-                       !cache_res.header_set_known && waited_ms < grid_wait_budget_ms_) {
+                       !cache_res.header_set_known && waited_ms < grid_wait_budget_ms_ &&
+                       // No point waiting for a grid slot from a coordinator we
+                       // already know is unreachable — go compile locally now.
+                       !NetworkClient::coordinator_presumed_down()) {
                     if (!logged) { grid_wait_events_++; logged = true; }
                     if (local_slots_ > 0 && slot_arbiter_->try_acquire()) {
                         compile_on_client("Grid saturated, local core freed first");
