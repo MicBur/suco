@@ -53,6 +53,59 @@ project sees.
 > produced a translation unit the worker could not compile, so a real project
 > failed to build through the grid at all.
 
+## RocksDB — the head-to-head, re-validated on 0.11.0
+
+365 compile steps (`-DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DWITH_GFLAGS=OFF`), 8-core
+client, four-node grid, measured on an idle machine:
+
+| Scenario | Wall | vs. local |
+|---|---|---|
+| local `g++ -j8` | 363.4 s | 1.00x |
+| grid, cold, header-sets **off** (0.11.0 default) | 149.5 s | **2.43x** |
+| grid, cold, header-sets **on** | 138.9 s | 2.62x |
+| grid, warm cache | 19.1 s | **19.0x** |
+
+Reproduced: a second independent series gave 152.1 / 140.1 / 18.9 s.
+
+**RocksDB does not trigger the #15 header-set defect.** It builds cleanly with the
+split enabled, while SUCO's own sources do not. The defect is therefore
+content-dependent — which is why it survived so long, and why the earlier RocksDB
+figures were not invalidated by it.
+
+**Disabling the split costs ~7.6% here** (149.5 s vs 138.9 s). That is the honest
+price of the 0.11.0 correctness mitigation: projects whose headers happen to split
+cleanly give up a small amount of speed so that projects whose headers do not still
+build at all.
+
+### What is NOT verified: the "parity with Icecream" claim
+
+The project has claimed parity with Icecream on a RocksDB cold build. **That claim
+could not be reproduced, because there is no Icecream cluster to compare against:**
+`icecc-scheduler` is installed but its service is inactive, and `iceccd` runs only
+on one of the four machines. An `icecc` build in this environment compiles locally.
+
+Whether the original comparison ran against a real Icecream cluster or against
+local-only Icecream is not something the current state of the machines can answer.
+Until an Icecream cluster is stood up and the comparison re-run, treat the parity
+claim as unverified.
+
+### Three measurement mistakes worth repeating
+
+The first three attempts at this benchmark were all wrong, in ways that flattered
+or distorted the result:
+
+1. **The warm run measured nothing** (0.0 s) — the build directory was not wiped, so
+   ninja found everything up to date.
+2. **Run ordering leaked cold costs**: the first configuration measured paid all the
+   cold worker-cache costs, making the second look 2.8x faster than it was.
+3. **Only the client cache was cleared, never the coordinator's L2.** Every "cold"
+   run after the first was served from it — `cache_hits: 2526` against
+   `cache_misses: 366`, where 366 is exactly one full cold build. Cold numbers
+   dropped from ~150 s to ~26 s and looked spectacular; they were cache hits.
+
+A cold grid measurement must clear the client cache **and** the coordinator's cache,
+and must not reuse a populated build directory.
+
 ## Proof the work actually spreads across the grid
 
 A speedup number alone does not prove multi-node execution — a fast round could

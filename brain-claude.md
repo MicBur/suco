@@ -13,11 +13,20 @@ Last updated: 2026-07-21.
 SUCO is a distributed C/C++ compiler for a LAN. Target: **match IncrediBuild / Icecream on
 speed, but be installable in 30 seconds via `apt`.**
 
-**Status: achieved.** On RocksDB (342 TUs, 4-node grid, idle machine, same-session head-to-head):
-- **Cold build: on par with Icecream** (SUCO 100.7s vs icecc 101.9s — parity, within noise).
-- **Warm rebuild: ~4.1× faster** (24.7s vs 101.9s) — Icecream has no cache; SUCO serves unchanged
-  objects from a content-addressed cache.
+**Status (re-measured on 0.11.0, 2026-07-24).** RocksDB, 365 compile steps, 4-node grid,
+idle 8-core client — see `docs/BENCHMARK.md` for method and the mistakes it corrects:
+- **Cold build: 2.43× faster than local `g++ -j8`** (149.5s vs 363.4s). Reproduced twice.
+- **Warm rebuild: 19× faster** (19.1s) — Icecream has no cache; SUCO serves unchanged objects
+  from a content-addressed cache. This remains the clearest structural advantage.
 - Published publicly: `sudo apt install suco` from https://micbur.github.io/suco.
+
+**The Icecream comparison is currently UNVERIFIED.** The earlier entry here claimed parity on a
+cold build (SUCO 100.7s vs icecc 101.9s). That could not be reproduced: there is no Icecream
+cluster on these machines — `icecc-scheduler`'s service is inactive and `iceccd` runs on exactly
+one of the four hosts, so `icecc` here compiles locally. Whether the original figure was measured
+against a real Icecream cluster or against local-only Icecream cannot be determined from the
+current state of the machines. Do not repeat the parity claim until a cluster is stood up and the
+comparison re-run. **What is measured is SUCO against a local build, not against Icecream.**
 
 ## Cold-build cost model (where the overhead actually is — 2026-07-22)
 
