@@ -130,6 +130,25 @@ bool looks_like_compiler(const std::string& path) {
     return false;
 }
 
+// Windows ships two unrelated toolchains and only one of them can use the grid.
+// MSVC is the conventional default, but cl.exe exists only inside a Developer
+// Command Prompt, and an MSVC job cannot be cross-dispatched to a Linux worker —
+// no Linux box can run cl.exe. MinGW is the toolchain a Linux grid CAN serve, via
+// the x86_64-w64-mingw32 cross compilers. Defaulting blindly to cl.exe therefore
+// failed twice over: on a MinGW-only machine it exited 127 with no explanation,
+// and on an MSVC machine it silently gave up all distribution. See #20.
+//
+// vcvars sets INCLUDE, and that is the signal we key on: it is exactly the
+// condition under which cl.exe is usable, and reading an env var costs nothing.
+// Probing PATH with `where` would spawn a shell on every single invocation —
+// ~10-20ms per TU, which is the same order as the Nagle latency we went to some
+// trouble to remove.
+std::string default_windows_compiler(bool is_cpp) {
+    const char* inc = std::getenv("INCLUDE");
+    if (inc && *inc) return "cl.exe";
+    return is_cpp ? "g++" : "gcc";
+}
+
 // Shared helper to resolve compiler path and adjust raw_args
 std::string resolve_compiler_and_adjust_args(bool is_cpp, bool called_as_wrapper, std::vector<std::string>& raw_args) {
     if (called_as_wrapper) {
@@ -159,7 +178,7 @@ std::string resolve_compiler_and_adjust_args(bool is_cpp, bool called_as_wrapper
                 compiler_path = env_val;
             } else {
                 #ifdef _WIN32
-                compiler_path = "cl.exe";
+                compiler_path = default_windows_compiler(is_cpp);
                 #else
                 compiler_path = is_cpp ? "g++" : "gcc";
                 #endif
@@ -174,7 +193,7 @@ std::string resolve_compiler_and_adjust_args(bool is_cpp, bool called_as_wrapper
         }
         // Fallback fallback
         #ifdef _WIN32
-        return "cl.exe";
+        return default_windows_compiler(is_cpp);
         #else
         return is_cpp ? "g++" : "gcc";
         #endif
