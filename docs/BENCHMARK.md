@@ -53,6 +53,34 @@ project sees.
 > produced a translation unit the worker could not compile, so a real project
 > failed to build through the grid at all.
 
+## The Windows case: a Windows developer on a Linux cross-compiling grid
+
+This is the configuration SUCO on Windows exists for. The client preprocesses on
+Windows, the Linux workers cross-compile with `x86_64-w64-mingw32-g++`, and real
+`pe-x86-64` Windows objects come back. Building SUCO itself from the Windows box:
+
+| Scenario | Wall | vs. local |
+|---|---|---|
+| local MinGW `g++ -j24` | 99.5 s | 1.00x |
+| grid only, `-j16` (`SUCO_LOCAL_SLOTS=0`) | 96.9 s | 1.03x |
+| **grid hybrid, `-j24` (local cores + grid)** | **64.4 s** | **1.55x** |
+
+**The grid alone does not beat a strong workstation — it ties it.** The client here
+has 24 cores; the grid has 13 slots spread over 2- to 4-core Linux machines. Pure
+grid dispatch (96.9 s) is within noise of building locally (99.5 s).
+
+**The win comes from using both**, which is the default mode: local-first
+scheduling races free client cores against grid slots, and that combination is
+1.55x faster than either alone. Anyone benchmarking SUCO by forcing
+`SUCO_LOCAL_SLOTS=0` is measuring the grid in isolation, not what a user gets.
+
+The corollary is that SUCO's value on Windows scales with how weak the client is
+relative to the grid, not with the grid's absolute size. A laptop gains far more
+than this 24-core box does.
+
+> Requires the client to resolve to MinGW rather than MSVC. Since #20 that is the
+> default outside a Developer Command Prompt — an MSVC job cannot be dispatched at
+> all, because no Linux worker can run `cl.exe`.
 ## RocksDB — the head-to-head, re-validated on 0.11.0
 
 365 compile steps (`-DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DWITH_GFLAGS=OFF`), 8-core

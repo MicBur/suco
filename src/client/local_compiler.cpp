@@ -7,6 +7,7 @@
 
 #ifdef _WIN32
 #include <process.h>
+#include <cerrno>
 #else
 #include <unistd.h>
 #include <sys/wait.h>
@@ -57,7 +58,20 @@ int LocalCompiler::execute_direct(const std::vector<std::string>& args, const st
         c_args.push_back(arg.c_str());
     }
     c_args.push_back(nullptr);
-    return static_cast<int>(_spawnvp(_P_WAIT, args[0].c_str(), const_cast<char* const*>(c_args.data())));
+    const int rc = static_cast<int>(_spawnvp(_P_WAIT, args[0].c_str(), const_cast<char* const*>(c_args.data())));
+    if (rc == -1 && errno == ENOENT) {
+        // Without this the run ends as a bare non-zero exit with an almost empty
+        // log, which reads as "SUCO is broken" rather than "no compiler here".
+        SUCO_LOG_ERROR("cannot run '{}' — not found on PATH.", args[0]);
+        if (args[0] == "cl.exe" || args[0] == "cl") {
+            SUCO_LOG_ERROR("  MSVC: start from a Developer Command Prompt, or run vcvars64.bat first.");
+            SUCO_LOG_ERROR("  MinGW: put g++ on PATH, or set SUCO_REAL_CXX=g++ "
+                           "(MinGW is also the toolchain a Linux grid can cross-compile for).");
+        } else {
+            SUCO_LOG_ERROR("  Put it on PATH, or name the compiler explicitly: suco-cl++ <compiler> -c ...");
+        }
+    }
+    return rc;
 #else
     pid_t pid = fork();
     if (pid == 0) {
