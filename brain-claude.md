@@ -4,7 +4,7 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-21.
+Last updated: 2026-07-25.
 
 ---
 
@@ -208,6 +208,47 @@ ignore `SIGTERM` → `SIGKILL` when needed.
 - Release: `git tag vX.Y.Z && git push origin vX.Y.Z` → the Actions workflow builds, signs, and
   publishes the APT repo automatically.
 - Keep the two READMEs and `CHANGELOG.md` truthful; benchmark claims must be reproducible.
+
+---
+
+## Working with Antigravity — what it can do, and what it should own
+
+**Antigravity** (Google's agentic dev platform; public preview, macOS/Windows/Linux, free) is the
+second agent on this project. It maintains its own handoff doc, **`brain-ag.md`** (SSH inventory,
+Windows paths, toolchain). It set up passwordless SSH to the grid — `ssh k3master`, `ssh node1`,
+`ssh node2`, `ssh node3` (node3 = the box this file calls **Brain-OS**, 192.168.0.20).
+
+**What it can do** here: an agent-first Manager surface (spawn/supervise several agents in
+parallel, async Inbox); agents act across editor + terminal + browser in a single task (run the
+loopback grid and verify the `:9001` dashboard in the browser); **Artifacts** as reviewable
+deliverables (task lists, plans, screenshots, browser recordings) with inline review; a knowledge
+base for cross-task memory. Models: Gemini 3, Claude Sonnet 4.5, GPT-OSS.
+
+**What Antigravity should own** (division of labour, so the two agents stop colliding):
+
+- **The Windows side.** Build and verify the `suco*.exe` on the Windows box (MinGW 13.1.0), keep
+  `brain-ag.md`'s inventory current (SSH aliases, paths, toolchain), and own SSH/key management —
+  it already generated and deployed the keys.
+- **Browser-based verification.** Use its browser surface to check the dashboard live and capture
+  Artifacts (screenshots/recordings) as grid-dispatch proof — `Direct dispatch OK`, per-node
+  distribution, target-OS badges. This is where AG is strongest.
+- **The Windows→Linux client path.** Exercise the flagship cross-dispatch from Windows and file
+  what breaks there (it is how #24 and #26 would surface).
+
+Claude (this file) owns the **Linux/grid side**: coordinator/worker code, byte-identity and the
+invariants above, releases, and the APT/Windows publish workflows.
+
+**Coordination rules — learned the hard way (the two agents collided on THIS file):**
+
+- Each agent owns its own handoff doc. Antigravity edits `brain-ag.md`; Claude edits
+  `brain-claude.md`. Don't rewrite the other's doc — cross-reference it.
+- Shared files (source, `CHANGELOG.md`, workflows, this file) change via a **git branch + PR**,
+  never by overwriting another agent's work in the working tree. A local rewrite of a file the
+  other agent has an open branch on silently loses work — that is exactly what happened here.
+- Whoever acts on the grid follows the strict loop — *build → loopback → byte-identity → grid →
+  deploy* — and the invariants. Autonomy does not exempt either agent from them.
+
+Sources: [antigravity.google](https://antigravity.google/blog/introducing-google-antigravity).
 
 ---
 
