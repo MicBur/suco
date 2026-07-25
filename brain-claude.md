@@ -4,7 +4,7 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-21.
+Last updated: 2026-07-25.
 
 ---
 
@@ -208,6 +208,39 @@ ignore `SIGTERM` → `SIGKILL` when needed.
 - Release: `git tag vX.Y.Z && git push origin vX.Y.Z` → the Actions workflow builds, signs, and
   publishes the APT repo automatically.
 - Keep the two READMEs and `CHANGELOG.md` truthful; benchmark claims must be reproducible.
+
+---
+
+## Working via Google Antigravity (agent environment)
+
+SUCO can be continued from **Google Antigravity**, Google's agentic development platform
+(public preview since Nov 2025; free, cross-platform on macOS/Windows/Linux). What it can do
+that matters for this project:
+
+- **Agent-first "Manager" surface.** Instead of one assistant embedded in an editor, you spawn
+  and supervise multiple agents in parallel across workspaces, with an async Inbox for
+  notifications. Maps naturally to SUCO's multi-node work (client + coordinator + workers).
+- **Agents act across editor + terminal + browser in a single task.** An agent can write code,
+  launch a server from the terminal, and drive the browser to test it — end to end,
+  autonomously. Directly useful here: run the loopback grid + `ci_smoke_test.sh` in the terminal
+  and **verify the dashboard live at `:9001` in the browser** in the same run.
+- **Artifacts** — the agent produces validatable deliverables (task lists, implementation plans,
+  walkthroughs, **screenshots and browser recordings**) rather than only raw tool calls. Good fit
+  for capturing grid-dispatch proof (`Direct dispatch OK`, per-node distribution, dashboard
+  target-OS badges) as something reviewable.
+- **Inline review of artifacts.** Google-Doc-style comments on text artifacts and
+  select-and-comment on screenshots; feedback is folded into the run without stopping it.
+- **Knowledge base** — agents persist context/snippets across tasks. This file is the
+  human-readable equivalent; keep both truthful.
+- **Models:** Gemini 3, Anthropic Claude Sonnet 4.5, OpenAI GPT-OSS (model-optional).
+
+**Caveat — the strict loop still applies.** An autonomous agent with terminal + SSH can reach the
+live grid. Do **not** let it skip *build → loopback test → byte-identity check → grid test →
+deploy*; never push untested changes to the nodes. The autonomy is real, so the discipline in
+"How to work on it" and the invariants above matter more, not less.
+
+Sources: [Introducing Google Antigravity](https://antigravity.google/blog/introducing-google-antigravity),
+[Google Developers Blog](https://developers.googleblog.com/build-with-google-antigravity-our-new-agentic-development-platform/).
 
 ---
 
