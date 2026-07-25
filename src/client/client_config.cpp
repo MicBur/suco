@@ -175,13 +175,21 @@ ClientConfig ClientConfig::load_or_default() {
     config.log_level = "INFO";
     config.pipeline_aggressiveness = "medium";
     config.max_inflight_batches = 4;
-    // Header-set splitting is DISABLED by default: the split cannot be reassembled
-    // into a well-formed TU, so remote compiles fail on any real project (#15).
-    // Two independent defects: the <built-in> preamble is classified as non-header
-    // and lands after the system headers that need its macros, and dropping the
-    // system-header line markers breaks linemarker nesting. Without the split the
-    // client ships the full preprocessed source - larger payload, but correct.
-    // Re-enable with SUCO_HEADER_CACHE_ENABLED=1 once #15 is fixed.
+    // Header-set splitting: ship system headers once and let workers cache/PCH
+    // them, instead of re-shipping them with every TU. The reassembly defect that
+    // disabled it in 0.11.0 (#15) is FIXED in header_set_hasher.cpp — indented
+    // line markers are now recognised and the <built-in> preamble goes to the
+    // header set ahead of the macros it defines. Proven output-transparent for a
+    // same-toolchain compile: a full Linux SUCO build gives byte-identical objects
+    // with the split on vs off.
+    //
+    // Still OFF by default, for a DIFFERENT reason: it breaks CROSS-toolchain
+    // dispatch (#24). A Windows client splits its C:/Qt MinGW headers into the
+    // header set, but a Linux worker cross-compiling with its own
+    // x86_64-w64-mingw32 headers cannot reconstitute them — std::format et al. go
+    // missing. That is the flagship Windows->Linux path, so it must not regress.
+    // Enable with SUCO_HEADER_CACHE_ENABLED=1 on a homogeneous grid (same
+    // toolchain on client and workers) to get the ~7.6% back.
     config.header_cache_enabled = false;
     config.local_prep_cache_enabled = true;
     config.header_cache_directory = get_default_header_cache_directory();
@@ -318,13 +326,21 @@ ClientConfig ClientConfig::load_or_default(const std::map<std::string, std::stri
     config.log_level = "INFO";
     config.pipeline_aggressiveness = "medium";
     config.max_inflight_batches = 4;
-    // Header-set splitting is DISABLED by default: the split cannot be reassembled
-    // into a well-formed TU, so remote compiles fail on any real project (#15).
-    // Two independent defects: the <built-in> preamble is classified as non-header
-    // and lands after the system headers that need its macros, and dropping the
-    // system-header line markers breaks linemarker nesting. Without the split the
-    // client ships the full preprocessed source - larger payload, but correct.
-    // Re-enable with SUCO_HEADER_CACHE_ENABLED=1 once #15 is fixed.
+    // Header-set splitting: ship system headers once and let workers cache/PCH
+    // them, instead of re-shipping them with every TU. The reassembly defect that
+    // disabled it in 0.11.0 (#15) is FIXED in header_set_hasher.cpp — indented
+    // line markers are now recognised and the <built-in> preamble goes to the
+    // header set ahead of the macros it defines. Proven output-transparent for a
+    // same-toolchain compile: a full Linux SUCO build gives byte-identical objects
+    // with the split on vs off.
+    //
+    // Still OFF by default, for a DIFFERENT reason: it breaks CROSS-toolchain
+    // dispatch (#24). A Windows client splits its C:/Qt MinGW headers into the
+    // header set, but a Linux worker cross-compiling with its own
+    // x86_64-w64-mingw32 headers cannot reconstitute them — std::format et al. go
+    // missing. That is the flagship Windows->Linux path, so it must not regress.
+    // Enable with SUCO_HEADER_CACHE_ENABLED=1 on a homogeneous grid (same
+    // toolchain on client and workers) to get the ~7.6% back.
     config.header_cache_enabled = false;
     config.local_prep_cache_enabled = true;
     config.header_cache_directory = get_default_header_cache_directory();

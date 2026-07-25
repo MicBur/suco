@@ -103,20 +103,37 @@ std::string HeaderSetHasher::compute_hash(CompilerCommand& cmd) {
         std::string_view line(data + pos, eol - pos);
         pos = eol + 1;
 
+        // Line markers can be INDENTED. -fdirectives-only prints a nested-include
+        // marker with leading whitespace, e.g. `    # 1 "/usr/include/unistd.h" 1 3 4`.
+        // Matching only column-0 markers meant every such nested system header was
+        // misfiled into the TU: its `extern "C" {` (via __BEGIN_DECLS) went to the
+        // stripped source while its `}` stayed in the header set, so the two halves
+        // no longer reassembled into a valid TU (#15). Classify on the trimmed view;
+        // the untrimmed line is still what gets written out, byte for byte.
+        size_t ind = 0;
+        while (ind < line.size() && (line[ind] == ' ' || line[ind] == '\t')) ++ind;
+        const std::string_view mline = line.substr(ind);
+
         const bool is_marker =
-            (line.size() >= 2 && line[0] == '#' && line[1] == ' ') ||
-            (line.size() >= 6 && line.compare(0, 6, "#line ") == 0);
+            (mline.size() >= 2 && mline[0] == '#' && mline[1] == ' ') ||
+            (mline.size() >= 6 && mline.compare(0, 6, "#line ") == 0);
 
         if (is_marker) {
-            size_t first_quote = line.find('"');
-            size_t last_quote = line.rfind('"');
+            size_t first_quote = mline.find('"');
+            size_t last_quote = mline.rfind('"');
             if (first_quote != std::string_view::npos && last_quote != std::string_view::npos &&
                 last_quote > first_quote) {
-                std::string_view file_path = line.substr(first_quote + 1, last_quote - first_quote - 1);
+                std::string_view file_path = mline.substr(first_quote + 1, last_quote - first_quote - 1);
 
                 if (file_path == "<built-in>" || file_path == "<command-line>" ||
                     file_path == "<command line>" || file_path.empty()) {
-                    in_header = false;
+                    // The preamble carries the predefined macros (__SIZE_TYPE__,
+                    // __PTRDIFF_TYPE__, …). The system headers reference them, so it
+                    // MUST precede them — which means it belongs to the header set.
+                    // Leaving it in the stripped source (which is emitted AFTER the
+                    // header set) put the definitions after their first use and broke
+                    // the reassembly with "'__SIZE_TYPE__' does not name a type" (#15).
+                    in_header = true;
                 } else {
                     // Only system/library headers belong to the header set; the
                     // compilation unit and project-local headers stay in the TU.
