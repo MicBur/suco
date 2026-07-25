@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [ main, master ]
+    # Docs-only changes don't need the build matrix. A PR that touches ANY
+    # non-doc file still runs the full CI (paths-ignore only skips when every
+    # changed path matches). GitGuardian runs separately, so secret scanning is
+    # unaffected. main is not branch-protected, so a skipped run cannot deadlock
+    # a merge on a "required" check that never starts.
+    paths-ignore: [ '**.md', 'docs/**', 'LICENSE' ]
   pull_request:
     branches: [ main, master ]
+    paths-ignore: [ '**.md', 'docs/**', 'LICENSE' ]
 
 jobs:
   build-linux-release:
