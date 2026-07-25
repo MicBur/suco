@@ -1,0 +1,32 @@
+# Normalise all text to LF in the repository and check it out as LF everywhere,
+# including Windows. The grid's shell scripts (scripts/*.sh, tests/*.sh,
+# debian/rules) deploy to Linux nodes and MUST stay LF — a CRLF `#!/bin/bash`
+# fails there with "bad interpreter". Without this file, core.autocrlf=true on
+# the Windows box rewrote every checked-out file to CRLF, leaving 52 files
+# permanently "modified" and one bad commit away from breaking the nodes.
+* text=auto eol=lf
+
+# Windows-native scripts are the exception — keep them CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: never touch line endings.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.xz   binary
+*.zst  binary
+*.o    binary
+*.obj  binary
+*.a    binary
+*.lib  binary
+*.dll  binary
+*.exe  binary
+*.gch  binary
+*.pch  binary
