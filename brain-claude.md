@@ -238,6 +238,27 @@ base for cross-task memory. Models: Gemini 3, Claude Sonnet 4.5, GPT-OSS.
 Claude (this file) owns the **Linux/grid side**: coordinator/worker code, byte-identity and the
 invariants above, releases, and the APT/Windows publish workflows.
 
+**Next for Antigravity (queue, highest value first):**
+
+1. **Real-world install test of the Windows installer.** `suco-<ver>-windows-x64-setup.exe` is
+   published and the NSIS *script* is CI-checked, but it has never actually been run on a machine.
+   Install → verify PATH / Start-menu entries / `SUCO_NO_DAEMON=1` → call `suco-cl++` from a fresh
+   shell → uninstall → confirm clean removal. Capture screenshots as Artifacts. Highest value: it
+   is a user-facing release artifact currently unverified end to end.
+2. **Live dashboard proof with a recording.** Drive a Windows cross-compile, open `:9001` in the
+   browser, and record the **⊞ Win badge appearing live**; attach the browser recording as an
+   Artifact. This is what AG's browser+Artifacts strength is for, and Claude cannot do it (no
+   displayed browser pane).
+3. **Map #26 from the Windows client.** Systematically test which C++23 library headers
+   cross-compile and which do not (`<format>`, `<print>`, `<ranges>`, `<span>`, `<expected>`,
+   `<source_location>`, …) and produce a matrix. Scopes the real cross-compile limit with data.
+4. **Field-confirm the circuit breaker (#14) on real Windows.** Point the client at a dead
+   coordinator; confirm ~8 s fail-fast → local fallback → object produced.
+
+File findings as GitHub issues; do not fix grid-side code (that is Claude's side — see the rules
+below). This queue lives here because Claude owns this file; move items to `brain-ag.md` or to
+issues as you pick them up.
+
 **Coordination rules — learned the hard way (the two agents collided on THIS file):**
 
 - Each agent owns its own handoff doc. Antigravity edits `brain-ag.md`; Claude edits
