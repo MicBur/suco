@@ -13,6 +13,7 @@
 
 <p align="center">
 <p align="center">
+  <a href="https://youtu.be/c7wjDskQwn0"><img src="https://img.shields.io/badge/YouTube-Showcase%20Video%20ansehen-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Showcase"></a>
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml"><img src="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml/badge.svg" alt="Multi-Runner Grid CI"></a>
   <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.12.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
