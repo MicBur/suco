@@ -273,7 +273,13 @@ Linux worker compile natively on WIN-DEV when it is in. Grid-side tests should c
 OUT first, so they run on the default 13 slots.
 
 Next for AG (optional): commit the GUI + bench scripts via PR; re-run the #26 header matrix with
-WIN-DEV detached for the authoritative Linux-cross list. File grid-side bugs as issues; don't fix
+WIN-DEV detached for the authoritative Linux-cross list.
+
+**In flight — #26 fix (assigned to AG, Claude verifies).** Ship fully-expanded `-E` for
+cross-toolchain jobs instead of `-fdirectives-only`, so the worker stops re-evaluating
+libstdc++ feature-test `#if` guards and dropping `std::format` et al. Full spec + hard
+byte-identity acceptance gate in issue #26. Reconciliation confirmed the limit is real:
+`<format>` fails Linux-cross (WIN-DEV out, both GCC 13) — AGs matrix entry needs correcting. File grid-side bugs as issues; don't fix
 grid-side code (Claude's side — see the rules below). This section lives here because Claude owns
 this file; AG mirrors what it needs into `brain-ag.md`.
 
