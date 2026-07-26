@@ -12,8 +12,12 @@ grounded in the current code, so the remaining wire slice is a small, verifiable
   the client dependency scanner (`src/client/header_bundle.*`), and their self-tests.
 - **Reserved:** `PACKET_DIRECT_COMPILE_REQ_V3 = 26` (protocol.h); the client config
   flag `remote_preprocess_enabled` (env `SUCO_REMOTE_PREPROCESS`, default off).
-- **Not done:** the wire slice below. It touches the byte-identity-critical compile
-  path, so it must land with the grid byte-identity loop (§4), not blind.
+- **Validated (2026-07-27):** the core approach is proven **byte-identical/deterministic**
+  on real g++ (node3, 15.2) — see §4a. The only `-g` caveat has a one-flag fix. So the
+  wire slice is now de-risked plumbing, not an open research question.
+- **Not done:** the wire slice below (client V3 send + worker V3 receive/execute + the
+  V3 cache-key derivation). It still touches the compile path, so land it with the
+  §5 grid byte-identity cmp across the real corpora.
 
 ## 1. Why V3 needs its own path (not a tweak of the existing one)
 
@@ -77,12 +81,42 @@ Do not reuse `execute()`'s preprocessed-input assumptions. New function:
    `job_dir/<relpath>` (zip-slip guarded).
 3. Write the raw source to `job_dir/<safe rel_name>` (reuse `job_source_name`).
 4. `remapped = remap_include_flags(inc_list, project_root, job_dir)`.
-5. Build the command: `<compiler> <base flags> <remapped -I...> -x c++ -c <rel_name> -o <temp_out>`
-   plus the same determinism flags the normal path adds
-   (`-fdebug-prefix-map=<job_dir>=.`, and keep `-ffile-prefix-map=<project_root>=.`
-   so `__FILE__`/paths match native — this is the crux for byte-identity).
+5. Build the command: `<compiler> <base flags> <remapped -I...> -x c++ -c <rel_name> -o <temp_out>`.
+   For byte-identity add **`-ffile-prefix-map=<job_dir>=.`** (empirically the only extra
+   flag needed — see §4a; it normalises the per-job workspace path out of debug info so
+   `-g` builds are deterministic across workers). `-x c++` because the input is RAW
+   source, not `c++-cpp-output`. Run from `<job_dir>` with the source under its original
+   relative name so `__FILE__` matches native.
 6. Run from `job_dir` via `run_local_capture`; read `temp_out`; respond via the
    SAME response writer the V1 path uses; clean up.
+
+## 4a. Empirical byte-identity findings (verified on node3, g++ 15.2, 2026-07-27)
+
+The core approach — `materialize` a project-header bundle into a fresh workspace,
+`remap_include_flags`, then compile the RAW source there — was tested against real
+g++ before writing any wire code. Results, comparing the object built in two
+DIFFERENT workspace temp dirs (the V3-to-V3 determinism that caching needs):
+
+| Case | Result |
+| :--- | :--- |
+| `-O2`, nested project headers | **byte-identical / deterministic** — no extra flags |
+| `-O2`, vs a plain native `g++ -c src/hello.cpp -Iinc` | **byte-identical** |
+| `-g`, no prefix map | **non-deterministic** — the absolute workspace path leaks into debug info (`DW_AT_comp_dir` / file tables) |
+| `-g`, with `-ffile-prefix-map=<workspace>=.` | **deterministic** |
+
+**Conclusion:** the approach yields cacheable, byte-identical objects. The ONLY extra
+flag the worker must add for correctness under `-g` is `-ffile-prefix-map=<workspace>=.`
+— exactly analogous to the existing preprocessed path's `-fdebug-prefix-map=<job_dir>=.`
+(job_executor.cpp:277). Prerequisites the wire code must honour, confirmed by the test:
+- the raw source is compiled from the SAME relative path the client used
+  (`src/hello.cpp`), run from the workspace root — so `__FILE__` and embedded paths match;
+- project headers are materialised at their project-root-relative paths, and `-I`
+  flags are remapped to `<workspace>/<rel>`, so include resolution is identical.
+
+Cache-key note: V3 does NOT preprocess on the client, so the existing content_hash
+(computed from preprocessed source) is unavailable. Derive the V3 cache key
+deterministically from {normalised command, raw source bytes, bundle hash} instead —
+all three are already stable and on hand at dispatch time.
 
 ## 5. Byte-identity gate (invariant #1 — the whole point)
 
