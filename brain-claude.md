@@ -374,13 +374,15 @@ proven), not research; land it with the §5 grid `cmp` across the RocksDB/Google
 v1.0 items (#43 sandbox compile-path, #44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS
 is blocked on a build host.
 
-**#43 sandbox — also empirically de-risked (2026-07-27, node3 Ubuntu 26.04).** Compiling a TU under
-BOTH `unshare --user --map-root-user --mount --pid --fork --net` (ro fs + rw workdir) AND `bwrap
---ro-bind / / --bind <workdir> --unshare-net` produced a **byte-identical** object to native (rc 0) —
-namespaces don't perturb compiler output. **`bwrap` IS installed on node3**, and unprivileged userns
-works (`kernel.apparmor_restrict_unprivileged_userns=0`). Implementation note: the object goes to a
-`/tmp` temp path OUTSIDE the job dir, so the sandbox must bind that path (or the job dir) writable —
-bwrap `--ro-bind / /` alone makes `/tmp` read-only. Prefer bwrap when present; fall back to unshare.
+**#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
+worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs
++ rw-job-dir/`/tmp` + no-net namespace sandbox — bwrap preferred, unshare fallback. Verified on node3:
+compiling under BOTH backends is **byte-identical** to native, and `SUCO_SANDBOX=1 ci_smoke_test.sh`
+passed end-to-end (7 TUs, valid objects, binary runs, 7/7 cache hits, no crashes). Default behaviour
+is unchanged (no-op `cd <job_dir> && cmd` when off). `bwrap` IS installed on node3 and unprivileged
+userns works (`kernel.apparmor_restrict_unprivileged_userns=0`). Remaining to fully close #43: per-job
+`/tmp` isolation (currently binds all of `/tmp` rw) and a startup capability note; CI can't run
+unprivileged userns so it stays grid-verified.
 
 ## Open items
 
