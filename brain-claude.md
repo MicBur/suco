@@ -4,7 +4,7 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-25.
+Last updated: 2026-07-26.
 
 ---
 
@@ -60,28 +60,31 @@ strings — memory traffic only.)
 
 ---
 
-## Current state (2026-07-21)
+## Current state (2026-07-26)
 
-- Public repo: **github.com/MicBur/suco**, all nodes on **0.9.2**, grid healthy (4 workers / 13 slots).
-- APT repo built + signed by GitHub Actions on every `v*` tag → GitHub Pages. CI is green.
-- Docs: `docs/INSTALL.md` (full setup), `docs/INSTALL-apt.md` (apt + maintainer).
-- **Branch `windows-mingw` is pushed and CI-green (2026-07-21)** — including the full Linux battery
-  (smoke, cache-correctness, chaos, ASan/UBSan) over the shared-code fixes (`header_set_hasher.cpp`,
-  see invariant #8), and a NEW blocking Windows/MinGW CI job (MSYS2) that runs the same smoke test:
-  loopback grid, dispatch via cmd.exe, cache hit. PR onto main is the next step; the CI push
-  trigger temporarily includes `windows-mingw` — drop after merge. Until merged, `origin/main`
-  does not build on Windows and still carries the header-set bug.
-- **The Windows MSVC CI job is GREEN (2026-07-22, v0.10.3).** History: its configure was broken
-  since 2.1.0 (vcpkg missing `sqlite3`), fixed first; then it failed at build with real MSVC
-  errors, fixed via `fix/msvc-build` (PR #4). Root theme: the code was written for MinGW, which
-  provides POSIX names under `_WIN32`; MSVC does not. Fixes (all `_MSC_VER`/`WIN32`-guarded, MinGW
-  and Linux byte-identical): global `WIN32_LEAN_AND_MEAN`+`NOMINMAX` (winsock v1/v2 header clash),
-  a `platform_compat.h` shim (`popen`/`pclose`/`getpid`/`ssize_t`/`<unistd.h>`), and a
-  byte-identical rewrite of a greedy `\x1f` escape (module-CMI cache key — `0xFC 'M' 'I' 0x1F`
-  stays, so no drift). MinGW is still the *recommended* Windows toolchain (full grid smoke); the
-  MSVC job is build-only. **Reproduce MSVC locally:** vcpkg (`openssl zstd sqlite3 --triplet
+- Public repo **github.com/MicBur/suco**, released **v0.11.0** (nodes upgraded from the tag). APT
+  repo signed + published on every `v*` tag → GitHub Pages; CI green. Docs: `docs/INSTALL.md`,
+  `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
+- **The Windows→Linux cross-compile vision works out of the box.** A Windows dev runs
+  `suco-cl++ -c foo.cpp -o foo.o`, a Linux worker cross-compiles with `x86_64-w64-mingw32-g++`,
+  and a real `pe-x86-64` object comes back — no configuration. Verified independently by both
+  agents. The client defaults to MinGW (not `cl.exe`) unless an MSVC env is active (#20).
+- **Default grid = 4 Linux workers / 13 slots** (k3master, node1, node2, Brain-OS=node3). A local
+  **Windows worker `WIN-DEV`** (192.168.0.24, 8 slots) is **opt-in**, toggled via Antigravity's
+  `suco-gui.exe` ("Start WIN-DEV Worker") — normally OUT. With it in, the grid is 5 workers / 21
+  slots and Windows-target TUs can compile natively there (the escape hatch for #26).
+- CI matrix: Linux Release, Linux Debug (ASan/UBSan), Windows MinGW (blocking smoke), Windows
+  MSVC (build-only), GitGuardian. **Docs-only PRs skip the build matrix** (`paths-ignore`), so a
+  markdown change no longer waits ~17 min on the MSVC job. `main` is **not** branch-protected.
+- MSVC background (still true): the code was written for MinGW (POSIX names under `_WIN32`); MSVC
+  needs `WIN32_LEAN_AND_MEAN`+`NOMINMAX`, a `platform_compat.h` shim, and a byte-identical rewrite
+  of a greedy `\x1f` escape. Reproduce locally: vcpkg (`openssl zstd sqlite3 --triplet
   x64-windows`) + `cmake -G "Visual Studio 17 2022" -A x64 --toolchain vcpkg.cmake`. Build Tools
-  live under `C:\Program Files (x86)\...\2022\BuildTools`.
+  under `C:\Program Files (x86)\...\2022\BuildTools`.
+- **Open issues:** #24 (header-set splitting breaks cross-toolchain dispatch — why the split stays
+  off by default) and #26 (feature-guarded C++23 headers like `<format>` don't cross-compile on a
+  Linux worker; workaround: toggle WIN-DEV in). Both are cross-compile limits, not default-path
+  breakage.
 
 ---
 
@@ -121,14 +124,6 @@ strings — memory traffic only.)
 7. **Measurement hygiene:** benchmark only on an idle machine. Background apps (browser, k3s, an IDE)
    steal ~1.5 cores and inflate cold *and especially warm* numbers. The bench script waits for
    load < 1.5. Loaded runs looked 40–60s slower — not a regression.
-10. **Winsock `SO_RCVTIMEO`/`SO_SNDTIMEO` take a DWORD of MILLISECONDS, not a `struct timeval`.**
-    Passing a timeval makes Winsock read its `tv_sec` as milliseconds — a 30 s timeout becomes
-    30 ms. This kept the Windows client off every remote coordinator for the entire port: recvs
-    crossing the LAN aborted in ~30 ms as "handshake disconnect", while loopback (sub-30 ms) always
-    passed, so local smoke tests were green and the real grid was unreachable. **When a Windows
-    net path works on loopback but not across a LAN, suspect a timeout unit bug first.** A raw
-    `TcpClient` from PowerShell that gets a correct reply proves the server is fine and the bug is
-    client-side.
 8. **A hash is not a presence flag.** `HeaderSetHasher::compute_hash` digests flags + compiler
    version + toolchain hash regardless of whether any system header was found, so it returned a
    non-empty `header_set_hash` for a TU with *no* header set. All three callers read "non-empty
@@ -147,7 +142,15 @@ strings — memory traffic only.)
    by `Direct dispatch OK` plus a worker-side `Exit: 0`, never by a green build and never by
    `Cache hit` (which proves only the cache path).
 
-10. **The header-set split is not reassemblable — it was never a working optimisation (#15).**
+10. **Winsock `SO_RCVTIMEO`/`SO_SNDTIMEO` take a DWORD of MILLISECONDS, not a `struct timeval`.**
+    Passing a timeval makes Winsock read its `tv_sec` as milliseconds — a 30 s timeout becomes
+    30 ms. This kept the Windows client off every remote coordinator for the entire port: recvs
+    crossing the LAN aborted in ~30 ms as "handshake disconnect", while loopback (sub-30 ms) always
+    passed, so local smoke tests were green and the real grid was unreachable. **When a Windows
+    net path works on loopback but not across a LAN, suspect a timeout unit bug first.** A raw
+    `TcpClient` from PowerShell that gets a correct reply proves the server is fine and the bug is
+    client-side.
+11. **The header-set split — reassembly defect FIXED in #15; still off by default (#24).**
    `header_set_hasher.cpp` classifies preprocessed output line-by-line into "system headers"
    (shipped once, cached, optionally PCH'd) and "stripped source". Concatenating the two back
    does NOT reproduce the input. Proven outside SUCO: the original `.ii` compiles clean, the
@@ -163,8 +166,14 @@ strings — memory traffic only.)
    disabling the split by default; the switch `SUCO_HEADER_CACHE_ENABLED` had never actually
    gated the splitting, only the worker's PCH choice, which is why "turning it off" appeared to
    change nothing. Trivial TUs (system headers only) take a different path and compile fine —
-   which is exactly why every smoke test passed for so long.
-11. **An unreachable coordinator cost ~3 minutes per TU, not one second.** A single TU opens
+   which is exactly why every smoke test passed for so long. **Both defects were fixed in #15
+   (2026-07-25):** recognise indented line markers, and put the `<built-in>` preamble in the
+   header set. Proven output-transparent — a full Linux SUCO build gives **102/102 byte-identical**
+   objects with the split on vs off (`content_hash` is computed before the split, so invariant #1
+   holds). It stays OFF by default only because it breaks CROSS-toolchain dispatch (#24): a Windows
+   client's `C:/Qt` MinGW header set does not reconstitute on a Linux cross worker. Enable with
+   `SUCO_HEADER_CACHE_ENABLED=1` on a same-toolchain grid for ~7.6%.
+12. **An unreachable coordinator cost ~3 minutes per TU, not one second.** A single TU opens
    ~59 coordinator connections (cache query, header-set query, batch send, result upload, plus
    the backpressure re-query loop); each paid the full `connection_timeout_ms` (3000 ms). The
    build still produced a correct object via the local fallback — invariant #3 again masking a
@@ -238,26 +247,35 @@ base for cross-task memory. Models: Gemini 3, Claude Sonnet 4.5, GPT-OSS.
 Claude (this file) owns the **Linux/grid side**: coordinator/worker code, byte-identity and the
 invariants above, releases, and the APT/Windows publish workflows.
 
-**Next for Antigravity (queue, highest value first):**
+**Antigravity's queue — DONE (2026-07-26).** All four items completed and evidenced in
+`brain-ag.md` (walkthrough Artifacts live under `~/.gemini/antigravity/brain/...`, outside the repo):
 
-1. **Real-world install test of the Windows installer.** `suco-<ver>-windows-x64-setup.exe` is
-   published and the NSIS *script* is CI-checked, but it has never actually been run on a machine.
-   Install → verify PATH / Start-menu entries / `SUCO_NO_DAEMON=1` → call `suco-cl++` from a fresh
-   shell → uninstall → confirm clean removal. Capture screenshots as Artifacts. Highest value: it
-   is a user-facing release artifact currently unverified end to end.
-2. **Live dashboard proof with a recording.** Drive a Windows cross-compile, open `:9001` in the
-   browser, and record the **⊞ Win badge appearing live**; attach the browser recording as an
-   Artifact. This is what AG's browser+Artifacts strength is for, and Claude cannot do it (no
-   displayed browser pane).
-3. **Map #26 from the Windows client.** Systematically test which C++23 library headers
-   cross-compile and which do not (`<format>`, `<print>`, `<ranges>`, `<span>`, `<expected>`,
-   `<source_location>`, …) and produce a matrix. Scopes the real cross-compile limit with data.
-4. **Field-confirm the circuit breaker (#14) on real Windows.** Point the client at a dead
-   coordinator; confirm ~8 s fail-fast → local fallback → object produced.
+1. **Windows installer** real-world tested — silent install, DLL audit, cross-dispatch from the
+   *installed* binary, clean uninstall.
+2. **Live dashboard proof** of the `target_os:"windows"` badge + job feed.
+3. **C++23 header matrix** (feeds #26): ~9 headers build, ~5 don't (`<print>`, `<generator>`, …).
+   **Caveat:** measured with `WIN-DEV` available, so "builds" can mean *native on the Windows
+   worker*, not *cross-compiles on Linux*. The authoritative cross matrix needs WIN-DEV detached —
+   `<format>` in particular still fails on a Linux worker (that is #26).
+4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
+   fallback → exit 0.
 
-File findings as GitHub issues; do not fix grid-side code (that is Claude's side — see the rules
-below). This queue lives here because Claude owns this file; move items to `brain-ag.md` or to
-issues as you pick them up.
+AG also built two things beyond the queue, both **local/untracked** (need a branch+PR to enter the
+repo): a **Qt 6 desktop control center `suco-gui.exe`** (system tray, worker toggle, one-click
+WIN-DEV attach/detach) and a **101-TU Windows benchmark** (42.8 s native → 10.6 s hybrid, **4.04×**;
+warm 10.3 s — note this hybrid figure INCLUDES WIN-DEV, unlike the Linux-only numbers under "The
+goal").
+
+**The Windows worker `WIN-DEV` is opt-in, normally OUT.** Default grid = 4 Linux workers / 13
+slots; the GUI's "Start WIN-DEV Worker" attaches the local Windows box (8 slots) on demand. This is
+the intended escape hatch for #26 — feature-guarded C++23 headers that cannot cross-compile on a
+Linux worker compile natively on WIN-DEV when it is in. Grid-side tests should confirm WIN-DEV is
+OUT first, so they run on the default 13 slots.
+
+Next for AG (optional): commit the GUI + bench scripts via PR; re-run the #26 header matrix with
+WIN-DEV detached for the authoritative Linux-cross list. File grid-side bugs as issues; don't fix
+grid-side code (Claude's side — see the rules below). This section lives here because Claude owns
+this file; AG mirrors what it needs into `brain-ag.md`.
 
 **Coordination rules — learned the hard way (the two agents collided on THIS file):**
 
