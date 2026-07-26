@@ -267,6 +267,38 @@ invariants above, releases, and the APT/Windows publish workflows.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
+**Antigravity's NEXT queue (2026-07-26)** — the Task 1–7 backlog is done; these are the live items,
+all squarely Windows-side / verification (AG's turf), none touching grid code:
+
+1. **Fix + harden the WIN-DEV worker deployment (defect — highest priority).** This session the
+   WIN-DEV `suco-worker.exe` on `C:\Users\micbu\Desktop\suco\` crash-looped with
+   `STATUS_DLL_NOT_FOUND` (exit `-1073741515`) — `libssl-1_1-x64.dll` + `libcrypto-1_1-x64.dll`
+   were missing next to the exe. Manually patched by copying from
+   `C:\Qt\Tools\mingw1310_64\opt\bin\`, but AG's GUI "Start WIN-DEV Worker" bundle must **ship
+   those two DLLs itself** so an attach can never crash-loop again. Also **rebuild the WIN-DEV
+   worker at v0.12.0** (Desktop copy is stale). Verify: toggle WIN-DEV in via the GUI, confirm it
+   registers on the dashboard and takes a job, toggle it out. Owner: AG (it owns the GUI + WIN-DEV
+   deployment).
+2. **Reset AG's local `main` to `origin/main`.** It may still carry the dropped `6deef07`
+   (`fix(client): ship -E for cross`, the non-bug #26). `origin/main` is the source of truth; a
+   local main that still has it will fork the two agents again on the next shared edit.
+3. **Browser / Extension-Dev-Host verification of the new VS Code extension** (`extension/vscode/`,
+   PR #38, on main). On the Windows box: `npm install && npm run compile`, press **F5** to launch
+   the Extension Dev Host, point `suco.coordinatorHost` at `192.168.0.200`, and capture an Artifact
+   of the status bar showing real numbers (`⚡ SUCO: 4w · cache …%`) + the "Toggle grid for CMake"
+   action writing `CMAKE_CXX_COMPILER_LAUNCHER`. This validates Claude's PoC on the real Windows
+   client — exactly the browser/verification role AG is strongest at.
+4. **Scaffold the Visual Studio (VSIX) counterpart.** VSCode (TS) is Claude's; the **Visual Studio**
+   extension is Windows-native MSVC tooling — AG's turf, so the two don't collide. Most useful in
+   CMake *Open Folder* mode (inject `CMAKE_CXX_COMPILER_LAUNCHER=suco-cl++`, surface cache-hit rate
+   from `/api/stats`); classic MSBuild `cl.exe` injection is the fiddly exception, park it. Land via
+   branch + PR under `extension/visualstudio/`.
+
+Optional, if capacity: an **MSVC-cache walkthrough Artifact** — capture the verified headline
+("second identical MSVC compile = coordinator cache hit, byte-identical object, no `cl.exe`
+recompile") as a reviewable terminal+dashboard recording, since that is the value prop for MSVC devs
+who can't cross-dispatch.
+
 AG also built, now **on `main`** (PR #34): a **Qt 6 desktop control center `suco-gui.exe`**
 (system tray, worker toggle, one-click WIN-DEV attach/detach) and a **101-TU Windows benchmark**
 harness (≈46 s native → ≈12 s grid, ≈3.8×; the hybrid figure INCLUDES WIN-DEV, unlike the
