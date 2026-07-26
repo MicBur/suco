@@ -2,6 +2,18 @@
 
 All notable changes to the SUCO distributed compilation system will be documented in this file.
 
+## [0.12.0] - 2026-07-26
+
+### Added
+- **Qt 6 desktop control center (`suco-gui.exe`)** — a Windows GUI to watch the grid and toggle the local machine in as a worker on demand ("Start WIN-DEV Worker"), with a system-tray manager. The Windows worker is opt-in and normally out; the default grid stays 4 Linux workers / 13 slots. Built by the Antigravity agent; additive only (new `src/gui/`, a `find_package(Qt6 … QUIET)`-guarded CMake target, so builds without Qt6 are unaffected).
+- **Prometheus `/metrics` endpoint on the coordinator** (`:9001/metrics`) — exposes `jobs_success`/`jobs_failed` counters for scraping. Instrumentation only: the counters are incremented under the existing `m_state.mutex` (verified race-free) and touch no compile, cache-key, or dispatch path.
+- **Dedicated multi-node distributed-grid CI workflow** plus a fix so parallel test workers get unique direct ports in the multi-worker integration test.
+- **Windows installer polish** — custom application/installer icons and a web favicon, alongside the existing NSIS installer and a portfolio/showcase package.
+
+### Fixed
+- **The header-set split is reassemblable again (#15).** `-fdirectives-only` prints some nested-include line markers indented, which the classifier only matched at column 0 — so a nested system header (e.g. `unistd.h` via a project header) was misfiled into the stripped source, tearing its `extern "C" {` from its `}` and making the two halves un-reassemblable. Also, the `<built-in>` preamble (the predefined macros the system headers use) was filed as non-header and emitted after them. Both fixed: classify on a whitespace-trimmed view of each line, and send the preamble to the header set. Proven output-transparent — a full Linux SUCO build gives 102/102 byte-identical objects with the split on vs off (`content_hash` is computed before the split, so cache keys are unaffected). Still off by default, gated only by the cross-toolchain limitation (#24).
+- **Windows client defaults to MinGW when MSVC is not active (#20).** Defaulting blindly to `cl.exe` failed twice over: on a MinGW-only box it exited 127 with almost no output, and on an MSVC box it silently gave up all distribution (no Linux worker can run `cl.exe`). Now it picks `cl.exe` only when the MSVC environment is active (keyed on `INCLUDE`, free to check), otherwise MinGW — the toolchain a Linux grid can cross-compile for — and emits an actionable error when nothing runs.
+
 ## [0.11.0] - 2026-07-24
 
 ### Fixed
