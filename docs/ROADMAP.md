@@ -17,11 +17,14 @@
 
 ## 🚀 v1.0.0 — Production Target: Remote Preprocessing & Sandboxing
 
-- [ ] **Worker Execution Sandboxing**: Integrate `bubblewrap` (bwrap) / Linux namespaces to isolate remote worker processes on shared networks.
-- [ ] **Remote Preprocessing**: Ship raw headers and source files to worker nodes for remote `-E` preprocessing, eliminating local client CPU overhead.
-- [ ] **TLS / mTLS Encryption**: Mutual TLS authentication and encrypted network payloads for zero-trust enterprise environments.
-- [ ] **macOS ARM64 Support**: Homebrew formula and native Apple Silicon client & worker binaries.
-- [ ] **Dynamic Job Stealing**: Adaptive work-stealing algorithm between workers for unbalanced CPU node clusters.
+Tracked under the [v1.0.0 milestone](../../../milestone/1). Some foundations already exist — the
+remaining work per item is scoped in its issue.
+
+- [ ] **Remote Preprocessing** (#42): Ship raw headers and source files to worker nodes for remote `-E` preprocessing, eliminating local client CPU overhead. *Design complete ([remote_preprocessing_design.md](remote_preprocessing_design.md)); reuses the header-set-hash machinery.*
+- [ ] **Worker Execution Sandboxing** (#43): Isolate remote worker processes on shared networks via Linux namespaces / `bubblewrap`. *`unshare(1)` sandbox already covers `suco run`; this extends it to the compile path.*
+- [ ] **TLS / mTLS Encryption** (#44): Mutual TLS authentication for zero-trust enterprise environments. *Transport **encryption already ships** (`SUCO_TLS=1`, self-signed + HMAC auth); remaining work is the cert-based mutual-auth layer.*
+- [ ] **Dynamic Job Stealing** (#45): Adaptive work-stealing algorithm between workers for unbalanced CPU node clusters.
+- [ ] **macOS ARM64 Support** (#46): Homebrew formula and native Apple Silicon client & worker binaries. *Blocked on a macOS build host.*
 
 ---
 
