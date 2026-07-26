@@ -4,7 +4,8 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-26 (v0.12.0 released).
+Last updated: 2026-07-27 (v0.12.0 released; v1.0.0 milestone open, #42 remote-preprocessing
+foundation landed — see the v1.0.0 roadmap section below).
 
 ---
 
@@ -267,7 +268,17 @@ invariants above, releases, and the APT/Windows publish workflows.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
-**Antigravity's NEXT queue (2026-07-26)** — the Task 1–7 backlog is done; these are the live items,
+**Antigravity's queue — status (2026-07-27).** AG's `brain-ag.md` (its LOCAL, gitignored doc — not in
+the repo) now shows Task 8–13 done: WIN-DEV PATH-hardening, local-main reset, VS Code compile check,
+VSIX scaffold, an 8-page GitHub **Wiki** (`wiki/` + `scripts/deploy_github_wiki.ps1`, on main), and
+the **GPG-signed APT repo** (`release-apt.yml`, on main). AG worked on branches this time (good), but
+twice left them **without opening a PR** — Claude filed + merged both: the WIN-DEV/VSIX branch (#40)
+and a stranded 1-line PPA version fix (#49, `make_ppa_source.sh` was reading `cmake_minimum_required`
+3.15 instead of `project(... VERSION 0.12.0)`). **Lesson to reinforce with AG: push the branch AND
+open the PR** — an unpushed-PR branch is invisible and strands the work. The original queue below is
+now essentially complete.
+
+**Original NEXT queue (2026-07-26)** — the Task 1–7 backlog was done; these were the live items,
 all squarely Windows-side / verification (AG's turf), none touching grid code:
 
 1. **Fix + harden the WIN-DEV worker deployment (defect — highest priority).** This session the
@@ -335,10 +346,34 @@ Sources: [antigravity.google](https://antigravity.google/blog/introducing-google
 
 ---
 
+## v1.0.0 roadmap — in progress (2026-07-27)
+
+Milestone #1, issues #42–#46 (`docs/ROADMAP.md`). Started #42 **Remote Preprocessing** — the
+highest-value item; built bottom-up in dormant, CI-verified slices so nothing can affect normal
+builds until byte-identity is proven:
+
+- **#48 (landed):** byte-deterministic bundle format + client `-MM` dependency scanner
+  (`src/common/header_bundle_format.*`, `src/client/header_bundle.*`), self-test in ci_smoke_test.
+- **#50 (landed):** worker-side `materialize()` (zip-slip-guarded unpack) + `remap_include_flags()`
+  — the §6.3 include-path remap crux, pure/tested. Verified on MSVC + MinGW + Linux ASan/UBSan.
+- **#51 (landed):** reserved `PACKET_DIRECT_COMPILE_REQ_V3 = 26`, added `SUCO_REMOTE_PREPROCESS`
+  client flag (default off), and wrote **`docs/remote_preprocessing_impl.md`** — the exact wire
+  framing, worker `execute_remote_preprocess()` steps, and the byte-identity gate procedure.
+
+**NOT done — the wire slice.** It touches the byte-identity-critical compile path and needs its OWN
+send/worker functions (V3 ships RAW source + bundle; worker compiles with `-x c++` + remapped `-I`,
+NOT `-x c++-cpp-output` — so it must NOT reuse `rebuild_compiler_command`/`handle_compile_job`).
+Deliberately left for a supervised grid session: the whole value is byte-identity, and closing that
+loop (`cmp` V3 object vs native across the RocksDB/GoogleTest corpora) wants a human in the loop for
+discrepancy calls. Plan is fully written in `docs/remote_preprocessing_impl.md`. Other v1.0 items
+(#43 sandbox compile-path, #44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS is blocked
+on a build host.
+
 ## Open items
 
 - **⚠ Security (owner action):** the grid SSH/sudo password must be rotated — an old value was once
   exposed in a public repo. The deploy scripts no longer hardcode it.
+- **PAT rotation (owner):** the GitHub PAT in the Brain-OS git remote should be rotated.
 - **Blocked on `apt install` on the nodes** (owner's call): sandboxing (`bubblewrap`), ThinLTO
   (`clang lld`). Both are built/designed, waiting on the packages.
 - **Untested here:** `.rpm` (dnf/zypper) and a Homebrew formula — need an environment with
