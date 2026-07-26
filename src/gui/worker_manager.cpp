@@ -31,6 +31,10 @@ void WorkerManager::startWorker(const QString &coordinatorHost, int slotCount) {
     }
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QString currentPath = env.value("PATH");
+    QString appPath = QDir::toNativeSeparators(appDir);
+    env.insert("PATH", appPath + ";C:\\Qt\\Tools\\mingw1310_64\\bin;" + currentPath);
+
     // Ensure SUCO_SECRET is populated from user env if not set in process env
     if (env.value("SUCO_SECRET").isEmpty()) {
         QString userSecret = qgetenv("SUCO_SECRET");
