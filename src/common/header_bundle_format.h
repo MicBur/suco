@@ -42,4 +42,24 @@ std::string pack(std::vector<File> files);
 // is truncated, has a bad magic/version, or declares sizes past its end.
 bool unpack(const std::string& archive, std::vector<File>& out);
 
+// Worker side (v1.0.0 #42): unpack `archive` and write every entry under
+// `dest_dir`, recreating the relative directory structure. Refuses any entry
+// whose path escapes `dest_dir` (absolute, or containing "..") so a hostile
+// bundle can't write outside the workspace. Returns false on a bad archive, an
+// unsafe path, or an I/O error.
+bool materialize(const std::string& archive, const std::string& dest_dir);
+
+// Worker side (v1.0.0 #42): rewrite a compile's include flags so they point at
+// the materialised bundle instead of the client's original tree — the crux of
+// remote preprocessing (design §6.3). For each entry in `include_flags`:
+//   * a "-I<path>" (or "-I <path>") that lexically resolves INSIDE `project_root`
+//     becomes "-I<dest_dir>/<path-relative-to-root>" (the unpacked location);
+//   * anything else (system/toolchain -I outside the root, non-include flags) is
+//     passed through unchanged — a compatible worker resolves system headers
+//     from its own toolchain (design §2.2).
+// Pure lexical path math (no disk access) so it is deterministic and testable.
+std::vector<std::string> remap_include_flags(const std::vector<std::string>& include_flags,
+                                             const std::string& project_root,
+                                             const std::string& dest_dir);
+
 } // namespace suco::header_bundle
