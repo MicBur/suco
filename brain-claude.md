@@ -360,22 +360,36 @@ builds until byte-identity is proven:
   client flag (default off), and wrote **`docs/remote_preprocessing_impl.md`** — the exact wire
   framing, worker `execute_remote_preprocess()` steps, and the byte-identity gate procedure.
 
-**NOT done — the wire slice.** It touches the byte-identity-critical compile path and needs its OWN
-send/worker functions (V3 ships RAW source + bundle; worker compiles with `-x c++` + remapped `-I`,
-NOT `-x c++-cpp-output` — so it must NOT reuse `rebuild_compiler_command`/`handle_compile_job`).
-Deliberately left for a supervised grid session: the whole value is byte-identity, and closing that
-loop (`cmp` V3 object vs native across the RocksDB/GoogleTest corpora) wants a human in the loop for
-discrepancy calls. Plan is fully written in `docs/remote_preprocessing_impl.md`. Other v1.0 items
-(#43 sandbox compile-path, #44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS is blocked
-on a build host.
+- **#53 (landed) — byte-identity EMPIRICALLY PROVEN** on node3 (g++ 15.2): the core approach
+  (materialize → remap → compile RAW source in a fresh workspace) is byte-identical to native and
+  deterministic across workspaces for `-O2`; `-g` needs exactly one flag, `-ffile-prefix-map=<ws>=.`
+  (analogous to the existing `-fdebug-prefix-map`). Findings + the V3 cache-key derivation are in
+  `docs/remote_preprocessing_impl.md` §4a.
+
+**NOT done — the wire slice** (client V3 send + worker V3 receive/`execute_remote_preprocess` + V3
+cache key from `{command, raw source, bundle hash}`). Its OWN functions (V3 ships RAW source + bundle;
+worker compiles with `-x c++` + remapped `-I` + `-ffile-prefix-map`, NOT `-x c++-cpp-output` — so it
+must NOT reuse `rebuild_compiler_command`/`handle_compile_job`). Now de-risked plumbing (byte-identity
+proven), not research; land it with the §5 grid `cmp` across the RocksDB/GoogleTest corpora. Other
+v1.0 items (#43 sandbox compile-path, #44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS
+is blocked on a build host.
+
+**#43 sandbox — also empirically de-risked (2026-07-27, node3 Ubuntu 26.04).** Compiling a TU under
+BOTH `unshare --user --map-root-user --mount --pid --fork --net` (ro fs + rw workdir) AND `bwrap
+--ro-bind / / --bind <workdir> --unshare-net` produced a **byte-identical** object to native (rc 0) —
+namespaces don't perturb compiler output. **`bwrap` IS installed on node3**, and unprivileged userns
+works (`kernel.apparmor_restrict_unprivileged_userns=0`). Implementation note: the object goes to a
+`/tmp` temp path OUTSIDE the job dir, so the sandbox must bind that path (or the job dir) writable —
+bwrap `--ro-bind / /` alone makes `/tmp` read-only. Prefer bwrap when present; fall back to unshare.
 
 ## Open items
 
 - **⚠ Security (owner action):** the grid SSH/sudo password must be rotated — an old value was once
   exposed in a public repo. The deploy scripts no longer hardcode it.
 - **PAT rotation (owner):** the GitHub PAT in the Brain-OS git remote should be rotated.
-- **Blocked on `apt install` on the nodes** (owner's call): sandboxing (`bubblewrap`), ThinLTO
-  (`clang lld`). Both are built/designed, waiting on the packages.
+- **Sandboxing (#43): NO LONGER blocked** — `bwrap` is installed on node3 and unprivileged userns
+  works there; both backends compile byte-identically (see the v1.0.0 section). Still needs the
+  worker-side wiring + the writable-temp-path bind. ThinLTO (`clang lld`) may still want packages.
 - **Untested here:** `.rpm` (dnf/zypper) and a Homebrew formula — need an environment with
   `rpmbuild` / macOS before shipping.
 - **Nice-to-have:** further trim client per-TU feed cost (the memchr header-split landed; the goal is
