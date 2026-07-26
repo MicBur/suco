@@ -568,6 +568,21 @@ inline void run_web_server(int port) {
             ss >> method >> path;
 
             if (method == "GET") {
+                if (path == "/favicon.ico") {
+                    std::ifstream file("resources/favicon.ico", std::ios::binary);
+                    if (!file.is_open()) file.open("favicon.ico", std::ios::binary);
+                    if (!file.is_open()) file.open("../resources/favicon.ico", std::ios::binary);
+                    if (file.is_open()) {
+                        std::stringstream file_ss;
+                        file_ss << file.rdbuf();
+                        std::string ico_data = file_ss.str();
+                        file.close();
+                        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: image/x-icon\r\nContent-Length: " +
+                                               std::to_string(ico_data.size()) + "\r\nConnection: close\r\n\r\n" + ico_data;
+                        send_response(client_socket, response);
+                        return;
+                    }
+                }
                 if (path == "/" || path == "/index.html" || path == "/dashboard.html") {
                     // Try to read dashboard.html from file
                     std::string html_content = FALLBACK_DASHBOARD_HTML;

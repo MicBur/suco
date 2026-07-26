@@ -32,8 +32,8 @@ RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 
 !define MUI_ABORTWARNING
-!define MUI_ICON   "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
-!define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
+!define MUI_ICON   "..\..\resources\installer_icon.ico"
+!define MUI_UNICON "..\..\resources\installer_icon.ico"
 
 !insertmacro MUI_PAGE_LICENSE "${SRCDIR}\LICENSE"
 !insertmacro MUI_PAGE_COMPONENTS
