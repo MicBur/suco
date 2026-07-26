@@ -8,7 +8,7 @@
 set -euo pipefail
 SERIES="${1:?usage: make_ppa_source.sh <ubuntu-series> [rev]   (e.g. noble)}"
 REV="${2:-1}"
-VER="$(grep -oE 'VERSION [0-9.]+' CMakeLists.txt | head -1 | awk '{print $2}')"
+VER="$(grep -oE 'project\(suco VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')"
 FULL="${VER}~${SERIES}${REV}"
 cat > debian/changelog <<CL
 suco (${FULL}) ${SERIES}; urgency=medium
