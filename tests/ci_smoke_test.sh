@@ -37,6 +37,16 @@ for bin in suco-coordinator suco-worker suco-cl++; do
     fi
 done
 
+# Header-bundle format self-test (#42): verifies byte-identity/determinism of the
+# remote-preprocessing bundle format. Pure unit test, no grid needed. Tolerated if
+# the target wasn't built (older build dirs), but must pass when present.
+SELFTEST="$BUILD_DIR/suco-header-bundle-selftest"
+[ -x "$SELFTEST.exe" ] && SELFTEST="$SELFTEST.exe"
+if [ -x "$SELFTEST" ]; then
+    echo "=== Running header-bundle format self-test ==="
+    "$SELFTEST" || { echo "FAIL: header-bundle self-test failed"; exit 1; }
+fi
+
 # Deterministic environment: explicit coordinator, no daemon, no local slots
 # (forces the grid + cache path so the cache-hit assertion is meaningful).
 export SUCO_COORDINATOR_HOST=127.0.0.1
