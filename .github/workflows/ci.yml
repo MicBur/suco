@@ -186,3 +186,24 @@ jobs:
           & $nsis /DVERSION="0.0.0-ci" /DSRCDIR="$src" packaging\windows\suco.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
           Get-ChildItem packaging\windows\*.exe | Select-Object Name, Length
+
+  heterogeneous-multi-worker-cross-compile:
+    name: Multi-Worker Windows-to-Linux Cross-Compile Integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies & MinGW cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libzstd-dev g++-mingw-w64-x86-64
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j "$(nproc)"
+
+      - name: Run Multi-Worker Cross-Compilation Integration Test
+        run: bash tests/multi_worker_cross_compile_test.sh "$GITHUB_WORKSPACE/build"
