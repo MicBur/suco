@@ -12,11 +12,13 @@
 </p>
 
 <p align="center">
+<p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v1.7.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml"><img src="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml/badge.svg" alt="Multi-Runner Grid CI"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.12.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
+  <a href="#"><img src="https://img.shields.io/badge/telemetry-Prometheus%20:9001/metrics-ff4655?style=for-the-badge" alt="Prometheus"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
-  <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
 </p>
 
 <p align="center">
@@ -29,13 +31,15 @@
 
 SUCO ist eine **hochperformante, leichtgewichtige Alternative** zu teuren proprietären Lösungen wie IncrediBuild oder veralteten Systemen wie Icecream/distcc. Es wurde für **maximale Geschwindigkeit bei minimalem Setup** entwickelt:
 
+- 🌐 **Heterogene Multi-Knoten Cross-Kompilierung** – Ein Windows-Client (`suco-cl++.exe`) delegiert Kompilier-Jobs an parallele Linux-Worker-Knoten mit MinGW Cross-Compiler (`x86_64-w64-mingw32-g++`) und erhält native PE-x86-64 Binaries zurück.
+- 🤖 **CI-Verifizierter Multi-Knoten-Grid** – Automatisch in GitHub Actions CI über einen dedizierten Multi-Runner-Netzwerk-Workflow ([`multi-runner-grid.yml`](.github/workflows/multi-runner-grid.yml)) auf getrennten virtuellen Maschinen verifiziert.
+- 📈 **Prometheus & Grafana Telemetrie (`:9001/metrics`)** – Offener HTTP-Metrics-Exporter für Live-Jobzahlen, Cache-Hit-Raten, aktive Worker-Slots und Koordinator-Uptime.
+- 🖥️ **Natives Qt 6 Control Center & Windows Installer** – Moderne Desktop-GUI (`suco-gui.exe`) und automatisierter NSIS Windows Installer (`suco.nsi`) für müheloses Setup.
 - 🔍 **Zero-Config Auto-Discovery** – Worker finden den Coordinator automatisch per UDP Broadcast
 - 💾 **Intelligenter SSD-Cache** – SHA-256-basierter LRU-Cache mit Metadaten-Tracking
 - 📊 **Live Web-Dashboard** – Echtzeit-Monitoring aller Worker, CPU-Kerne und Jobs
 - 🛡️ **Transparentes Grid-Failover** – Bricht ein Worker weg, delegiert der Coordinator die Jobs sofort neu
 - ↩️ **Resilienter Client-Fallback** – Bei Coordinator-Ausfall kompiliert der Client in <100ms lokal weiter
-- 🖥️ **Cross-Platform** – Native Unterstützung für Linux (GCC/Clang) und Windows. Alle sechs Binaries bauen und betreiben das Grid nativ; MinGW GCC ist die empfohlene Windows-Toolchain (voll grid-getestet), und MSVC baut ebenfalls nativ — alle drei (Linux, MinGW, MSVC) sind CI-getestet
-- 🪟 **MSVC-Umgebungserkennung** – Findet Visual Studio unter Windows und importiert die Build-Umgebung automatisch
 - 🛠️ **CMake- & IDE-Integration** – Einfache Einbindung über `SUCO.cmake` und automatische `compile_commands.json` Markierung
 - 🧼 **Grid-weites Cache-Clearing** – Bereinigung aller lokalen und remote Caches über `suco cache clear`
 
@@ -347,9 +351,8 @@ suco/
 
 ## 🗺️ Roadmap & Meilensteine
 
-- ✅ **v0.11.0 (Aktuell)**: Heterogenes Windows-zu-Linux Cross-Compiling, Native Qt 6 Desktop Control Center App (`suco-gui.exe`), NSIS Installer Setup, 4,21x Cold Speedup & 19x Warm L2 Cache Hits.
-- 🔮 **v0.12.0 (Nächstes Ziel)**: Worker-Sandboxing (`bubblewrap`), Prometheus/Grafana `/metrics` Exporter, Distributed ThinLTO.
-- 🚀 **v1.0.0 (Produktion)**: Remote-Preprocessing, TLS/mTLS Verschlüsselung, macOS ARM64 Support.
+- ✅ **v0.12.0 (Aktuell / Released)**: Prometheus & Grafana Telemetrie Exporter (`:9001/metrics`), Multi-Knoten Verteilter CI Verification Grid Workflow (`multi-runner-grid.yml`), Heterogene Windows-zu-Linux Parallele Cross-Kompilierung, Linux Service-Deployment (`k3master`), Natives Qt 6 Desktop Control Center (`suco-gui.exe`).
+- 🚀 **v1.0.0 (Produktion Target)**: Worker-Sandboxing (`bubblewrap`), Remote-Preprocessing, TLS/mTLS Verschlüsselung, macOS ARM64 Support.
 
 Detaillierte technische Spezifikationen findest du in der [Projekt-Roadmap](docs/ROADMAP.md) und im [Portfolio-Showcase](docs/PORTFOLIO.md).
 

@@ -12,11 +12,13 @@
 </p>
 
 <p align="center">
+<p align="center">
   <a href="https://github.com/MicBur/suco/actions/workflows/ci.yml"><img src="https://github.com/MicBur/suco/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.11.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml"><img src="https://github.com/MicBur/suco/actions/workflows/multi-runner-grid.yml/badge.svg" alt="Multi-Runner Grid CI"></a>
+  <a href="https://github.com/MicBur/suco/releases"><img src="https://img.shields.io/badge/version-v0.12.0-00f2fe?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4facfe?style=for-the-badge" alt="Platform"></a>
+  <a href="#"><img src="https://img.shields.io/badge/telemetry-Prometheus%20:9001/metrics-ff4655?style=for-the-badge" alt="Prometheus"></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B20-9b51e0?style=for-the-badge" alt="C++20"></a>
-  <a href="#"><img src="https://img.shields.io/badge/cache-SHA--256%20SSD-10b981?style=for-the-badge" alt="Cache"></a>
 </p>
 
 <p align="center">
@@ -29,6 +31,10 @@
 
 SUCO is a **high-performance, lightweight alternative** to expensive proprietary solutions like IncrediBuild or legacy systems like Icecream/distcc. It is designed for **maximum speed with minimal setup**:
 
+- 🌐 **Heterogeneous Multi-Node Cross-Compilation** – A Windows client (`suco-cl++.exe`) dispatches compilation tasks to parallel Linux worker nodes running MinGW cross-compilers (`x86_64-w64-mingw32-g++`), returning native PE-x86-64 binary objects.
+- 🤖 **CI-Verified Multi-Node Grid** – Tested in GitHub Actions CI via a dedicated multi-runner network workflow ([`multi-runner-grid.yml`](.github/workflows/multi-runner-grid.yml)) verifying multi-node distribution across isolated virtual hosts.
+- 📈 **Prometheus & Grafana Telemetry (`:9001/metrics`)** – Open HTTP metrics exporter supplying real-time job counts, cache hit rates, active worker slots, and coordinator uptime.
+- 🖥️ **Native Qt 6 Control Center & Windows Installer** – Modern desktop GUI (`suco-gui.exe`) and automated NSIS Windows Installer (`suco.nsi`) for effortless setup.
 - 🔍 **Zero-Config Auto-Discovery** – Workers automatically discover the coordinator via UDP Broadcast.
 - 💾 **Intelligent SSD Cache** – SHA-256-based LRU cache with metadata tracking and versioned keys.
 - 📊 **Live Web Dashboard** – Real-time monitoring of all workers, CPU cores, cache hit rate, and compile history.
@@ -37,8 +43,6 @@ SUCO is a **high-performance, lightweight alternative** to expensive proprietary
 - 🔄 **Least-Recently-Assigned Scheduling** – Fair Round-Robin tie-breaking distributes parallel compile threads uniformly.
 - 🛡️ **Transparent Grid Failover** – If a worker goes offline, the coordinator immediately reschedules the jobs.
 - ↩️ **Resilient Client Fallback** – If the coordinator fails, the client seamlessly falls back to local compilation in <100ms.
-- 🖥️ **Cross-Platform** – Native support for Linux (GCC/Clang) and Windows. All six binaries build and run the grid natively; MinGW GCC is the recommended Windows toolchain (full grid smoke-tested), and MSVC also builds natively — all three (Linux, MinGW, MSVC) are CI-tested.
-- 🪟 **MSVC Environment Detection** – Automatically locates Visual Studio under Windows and imports the MSVC build environment.
 - 🛠️ **CMake & IDE Integration** – Easy integration via `SUCO.cmake` and automatic `compile_commands.json` wrapper prefix cleaning.
 - 🧼 **Grid-Wide Cache Clearing** – Clean all local and remote caches via `suco cache clear`.
 - 🤝 **Path Normalization** – Cross-directory cache hits via path mapping and `-ffile-prefix-map` integration.
@@ -365,9 +369,8 @@ The built-in dashboard on **port 9001** visualizes:
 
 ## 🗺️ Roadmap & Milestones
 
-- ✅ **v0.11.0 (Current)**: Heterogeneous Windows-to-Linux Cross-Compilation, Native Qt 6 Desktop Control Center (`suco-gui.exe`), NSIS Installer Setup, 4.21x Cold Speedup & 19x Warm L2 Cache Hits.
-- 🔮 **v0.12.0 (Next)**: Worker Sandboxing (`bubblewrap`), Prometheus/Grafana `/metrics` Exporter, Distributed ThinLTO.
-- 🚀 **v1.0.0 (Production)**: Remote Preprocessing, TLS/mTLS Encryption, macOS ARM64 Support.
+- ✅ **v0.12.0 (Current / Released)**: Prometheus & Grafana Telemetry Exporter (`:9001/metrics`), Multi-Node Distributed CI Verification Grid Workflow (`multi-runner-grid.yml`), Heterogeneous Windows-to-Linux Parallel Cross-Compilation, Linux Service Deployment (`k3master`), Native Qt 6 Desktop Control Center (`suco-gui.exe`).
+- 🚀 **v1.0.0 (Production Target)**: Worker Sandboxing (`bubblewrap`), Remote Preprocessing, TLS/mTLS Encryption, macOS ARM64 Support.
 
 For detailed technical specifications, view the full [Project Roadmap](docs/ROADMAP.md) and [Portfolio Showcase](docs/PORTFOLIO.md).
 
