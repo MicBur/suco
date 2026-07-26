@@ -321,3 +321,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     include(CPack)
 endif()
+
+# ---------------------------------------------------------------------------
+# Qt 6 Desktop Control Center GUI App (`suco-gui`)
+# ---------------------------------------------------------------------------
+find_package(Qt6 COMPONENTS Widgets Network QUIET)
+if(Qt6_FOUND)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+    set(CMAKE_AUTOUIC ON)
+
+    set(GUI_SOURCES
+        src/gui/main.cpp
+        src/gui/main_window.cpp
+        src/gui/worker_manager.cpp
+        src/gui/grid_client.cpp
+        src/gui/tray_manager.cpp
+    )
+
+    add_executable(suco-gui ${GUI_SOURCES})
+    target_include_directories(suco-gui PRIVATE src/gui src)
+    target_link_libraries(suco-gui PRIVATE
+        Qt6::Widgets
+        Qt6::Network
+    )
+    message(STATUS "Qt6 found — suco-gui desktop application target enabled.")
+else()
+    message(STATUS "Qt6 not found — skipping suco-gui desktop application target.")
+endif()
+
