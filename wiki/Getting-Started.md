@@ -6,10 +6,17 @@ Getting up and running with SUCO Grid takes less than **30 seconds**.
 
 ## 📦 Installation
 
-### Linux (Ubuntu / Debian)
-Install directly from the official APT repository:
+### Linux (Ubuntu / Debian APT Repository)
+Install directly from the official SUCO APT repository:
 
 ```bash
+# 1. Download & register the official GPG keyring
+curl -fsSL https://micbur.github.io/suco/suco-archive-keyring.asc | sudo tee /etc/apt/keyrings/suco.asc >/dev/null
+
+# 2. Add the SUCO APT repository source list
+echo "deb [signed-by=/etc/apt/keyrings/suco.asc] https://micbur.github.io/suco stable main" | sudo tee /etc/apt/sources.list.d/suco.list >/dev/null
+
+# 3. Update and install
 sudo apt update && sudo apt install -y suco
 ```
 

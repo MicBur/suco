@@ -191,6 +191,21 @@ Das gesamte System (Client, Coordinator, Worker) nutzt eine thread-sichere Loggi
 
 ## 💻 Installation
 
+### 🐧 Linux: Offizielles APT-Repository (Ubuntu / Debian)
+
+Direkt über das offizielle SUCO APT-Repository installieren:
+
+```bash
+# 1. Offiziellen GPG-Schlüssel herunterladen & registrieren
+curl -fsSL https://micbur.github.io/suco/suco-archive-keyring.asc | sudo tee /etc/apt/keyrings/suco.asc >/dev/null
+
+# 2. SUCO Paketquelle hinzufügen
+echo "deb [signed-by=/etc/apt/keyrings/suco.asc] https://micbur.github.io/suco stable main" | sudo tee /etc/apt/sources.list.d/suco.list >/dev/null
+
+# 3. Paketliste aktualisieren & SUCO installieren
+sudo apt update && sudo apt install -y suco
+```
+
 ### Abhängigkeiten
 
 | Platform | Pakete |
