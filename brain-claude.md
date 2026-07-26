@@ -72,7 +72,7 @@ strings — memory traffic only.)
 - **Default grid = 4 Linux workers / 13 slots** (k3master, node1, node2, Brain-OS=node3). A local
   **Windows worker `WIN-DEV`** (192.168.0.24, 8 slots) is **opt-in**, toggled via Antigravity's
   `suco-gui.exe` ("Start WIN-DEV Worker") — normally OUT. With it in, the grid is 5 workers / 21
-  slots and Windows-target TUs can compile natively there (the escape hatch for #26).
+  slots and Windows-target TUs can compile natively there (e.g. for GCC-14+ headers).
 - CI matrix: Linux Release, Linux Debug (ASan/UBSan), Windows MinGW (blocking smoke), Windows
   MSVC (build-only), GitGuardian. **Docs-only PRs skip the build matrix** (`paths-ignore`), so a
   markdown change no longer waits ~17 min on the MSVC job. `main` is **not** branch-protected.
@@ -81,10 +81,9 @@ strings — memory traffic only.)
   of a greedy `\x1f` escape. Reproduce locally: vcpkg (`openssl zstd sqlite3 --triplet
   x64-windows`) + `cmake -G "Visual Studio 17 2022" -A x64 --toolchain vcpkg.cmake`. Build Tools
   under `C:\Program Files (x86)\...\2022\BuildTools`.
-- **Open issues:** #24 (header-set splitting breaks cross-toolchain dispatch — why the split stays
-  off by default) and #26 (feature-guarded C++23 headers like `<format>` don't cross-compile on a
-  Linux worker; workaround: toggle WIN-DEV in). Both are cross-compile limits, not default-path
-  breakage.
+- **Open issue:** #24 (header-set splitting breaks cross-toolchain dispatch — why the split stays
+  off by default). #26 (a supposed `<format>` cross-compile failure) was **closed invalid** — it
+  was a test error (missing `-std=c++23`); `<format>` cross-compiles fine with the right `-std`.
 
 ---
 
@@ -198,6 +197,11 @@ These produced false bug reports before they were understood. All are MY errors,
 - **A file in `/tmp` you cannot overwrite yields a stale `tail`.** A redirect failing made a
   successful command look like a failure and showed another session's log. Write logs into a
   directory you created.
+- **Pass the `-std` a feature needs before calling a header "un-cross-compilable".** `std::format`
+  does not exist at the `gnu++17` default — `suco-cl++ -c format.cpp` fails locally *and* on the
+  grid for that reason alone. Testing cross-compile without `-std=c++23` produced a whole invalid
+  "#26" that was closed as a test error. Reproduce the LOCAL compile with the identical flags
+  first; if it fails locally, it is not a SUCO bug.
 
 ## Diagnostic discipline
 
@@ -242,7 +246,7 @@ base for cross-task memory. Models: Gemini 3, Claude Sonnet 4.5, GPT-OSS.
   Artifacts (screenshots/recordings) as grid-dispatch proof — `Direct dispatch OK`, per-node
   distribution, target-OS badges. This is where AG is strongest.
 - **The Windows→Linux client path.** Exercise the flagship cross-dispatch from Windows and file
-  what breaks there (it is how #24 and #26 would surface).
+  what breaks there (this is how #24 surfaced; #26 turned out to be a test error, now closed).
 
 Claude (this file) owns the **Linux/grid side**: coordinator/worker code, byte-identity and the
 invariants above, releases, and the APT/Windows publish workflows.
@@ -253,35 +257,35 @@ invariants above, releases, and the APT/Windows publish workflows.
 1. **Windows installer** real-world tested — silent install, DLL audit, cross-dispatch from the
    *installed* binary, clean uninstall.
 2. **Live dashboard proof** of the `target_os:"windows"` badge + job feed.
-3. **C++23 header matrix** (feeds #26): ~9 headers build, ~5 don't (`<print>`, `<generator>`, …).
-   **Caveat:** measured with `WIN-DEV` available, so "builds" can mean *native on the Windows
-   worker*, not *cross-compiles on Linux*. The authoritative cross matrix needs WIN-DEV detached —
-   `<format>` in particular still fails on a Linux worker (that is #26).
+3. **C++23 header matrix.** With `-std=c++23`, `<format>`, `<expected>`, `<ranges>`,
+   `<stacktrace>`, `<source_location>` (and more) cross-compile fine on the Linux workers;
+   `<print>`, `<generator>`, `<mdspan>`, `<flat_map>`, `<flat_set>` do not — they need GCC 14+,
+   which is not a SUCO issue. **This closed #26 as invalid:** an earlier "`<format>` fails cross"
+   report (mine) was a test error — it omitted `-std=c++23`, and `std::format` does not exist at
+   the `gnu++17` default *anywhere*, local included. Pass the `-std` a feature needs before calling
+   a header "un-cross-compilable". AG's matrix was right all along.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
-AG also built two things beyond the queue, both **local/untracked** (need a branch+PR to enter the
-repo): a **Qt 6 desktop control center `suco-gui.exe`** (system tray, worker toggle, one-click
-WIN-DEV attach/detach) and a **101-TU Windows benchmark** (42.8 s native → 10.6 s hybrid, **4.04×**;
-warm 10.3 s — note this hybrid figure INCLUDES WIN-DEV, unlike the Linux-only numbers under "The
-goal").
+AG also built (committed on the merged `feature/qt6-gui-and-windows-benchmarks` branch — on local
+main but **not yet pushed** as of 2026-07-26): a **Qt 6 desktop control center `suco-gui.exe`**
+(system tray, worker toggle, one-click WIN-DEV attach/detach) and a **101-TU Windows benchmark**
+(≈46 s native → ≈12 s grid, ≈3.8×; the hybrid figure INCLUDES WIN-DEV, unlike the Linux-only
+numbers under "The goal").
 
 **The Windows worker `WIN-DEV` is opt-in, normally OUT.** Default grid = 4 Linux workers / 13
-slots; the GUI's "Start WIN-DEV Worker" attaches the local Windows box (8 slots) on demand. This is
-the intended escape hatch for #26 — feature-guarded C++23 headers that cannot cross-compile on a
-Linux worker compile natively on WIN-DEV when it is in. Grid-side tests should confirm WIN-DEV is
-OUT first, so they run on the default 13 slots.
+slots; the GUI's "Start WIN-DEV Worker" attaches the local Windows box (8 slots) on demand — a
+native Windows worker for GCC-14+ headers or plain extra capacity, **not** a #26 escape hatch (#26
+is closed as invalid). Grid-side tests should confirm WIN-DEV is OUT first, so they run on the
+default 13 slots.
 
-Next for AG (optional): commit the GUI + bench scripts via PR; re-run the #26 header matrix with
-WIN-DEV detached for the authoritative Linux-cross list.
-
-**In flight — #26 fix (assigned to AG, Claude verifies).** Ship fully-expanded `-E` for
-cross-toolchain jobs instead of `-fdirectives-only`, so the worker stops re-evaluating
-libstdc++ feature-test `#if` guards and dropping `std::format` et al. Full spec + hard
-byte-identity acceptance gate in issue #26. Reconciliation confirmed the limit is real:
-`<format>` fails Linux-cross (WIN-DEV out, both GCC 13) — AGs matrix entry needs correcting. File grid-side bugs as issues; don't fix
-grid-side code (Claude's side — see the rules below). This section lives here because Claude owns
-this file; AG mirrors what it needs into `brain-ag.md`.
+Note (2026-07-26): AG also committed an unpushed `fix(client): ship -E for cross` (`6deef07`) for
+#26. **Verified unnecessary** — `<format>` cross-compiles with *and* without it once `-std=c++23`
+is passed — and it changes the Windows-cross `content_hash`, so it should be dropped before pushing,
+keeping only the GUI/benchmark commit. Coordination reminder that held up imperfectly here: shared
+code went straight to local main, not a branch+PR with Claude's byte-identity gate before merge.
+File grid-side bugs as issues; don't fix grid-side code (Claude's side — see the rules below). This
+section lives here because Claude owns this file; AG mirrors what it needs into `brain-ag.md`.
 
 **Coordination rules — learned the hard way (the two agents collided on THIS file):**
 
