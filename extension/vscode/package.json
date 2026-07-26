@@ -1,0 +1,55 @@
+{
+  "name": "suco-grid",
+  "displayName": "SUCO Grid",
+  "description": "Status bar and controls for the SUCO distributed C/C++ compiler grid.",
+  "version": "0.1.0",
+  "publisher": "micbur",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/MicBur/suco" },
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "suco.toggleGrid", "title": "SUCO: Toggle grid launcher for CMake builds" },
+      { "command": "suco.openDashboard", "title": "SUCO: Open dashboard" },
+      { "command": "suco.refresh", "title": "SUCO: Refresh grid status" }
+    ],
+    "configuration": {
+      "title": "SUCO",
+      "properties": {
+        "suco.coordinatorHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "SUCO coordinator host (IP or name)."
+        },
+        "suco.coordinatorPort": {
+          "type": "number",
+          "default": 9001,
+          "description": "Coordinator dashboard/API port (the :9001 web port)."
+        },
+        "suco.launcher": {
+          "type": "string",
+          "default": "suco-cl++",
+          "description": "Compiler launcher injected as CMAKE_C(XX)_COMPILER_LAUNCHER."
+        },
+        "suco.pollSeconds": {
+          "type": "number",
+          "default": 5,
+          "description": "How often to refresh grid status, in seconds (min 2)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.3.3"
+  }
+}
