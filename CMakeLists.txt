@@ -105,6 +105,7 @@ set(COMMON_SOURCES
     src/common/msvc_detector.cpp
     src/common/zstd_util.cpp
     src/common/tls_util.cpp
+    src/common/header_bundle_format.cpp
 )
 
 # OpenSSL::SSL for the optional TLS transport (C2). Provided via find_package;
@@ -141,6 +142,7 @@ set(CLIENT_SOURCES
     src/client/toolchain_packer.cpp
     src/client/header_set_hasher.cpp
     src/client/local_prep_cache.cpp
+    src/client/header_bundle.cpp
     ${COMMON_SOURCES}
 )
 
@@ -263,6 +265,7 @@ set(DAEMON_SOURCES
     src/client/toolchain_packer.cpp
     src/client/header_set_hasher.cpp
     src/client/local_prep_cache.cpp
+    src/client/header_bundle.cpp
     ${COMMON_SOURCES}
 )
 add_executable(suco-daemon ${DAEMON_SOURCES})
@@ -349,4 +352,15 @@ if(Qt6_FOUND)
 else()
     message(STATUS "Qt6 not found — skipping suco-gui desktop application target.")
 endif()
+
+# ---------------------------------------------------------------------------
+# Header-bundle format self-test (v1.0.0 #42 — remote preprocessing foundation).
+# Tiny, dependency-free; always built so every CI runner verifies the byte-identity
+# (invariant #1) and round-trip properties the feature relies on. Run in
+# tests/ci_smoke_test.sh. Not installed/packaged.
+# ---------------------------------------------------------------------------
+add_executable(suco-header-bundle-selftest
+    tests/header_bundle_selftest.cpp
+    src/common/header_bundle_format.cpp
+)
 
