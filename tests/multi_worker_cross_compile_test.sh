@@ -52,22 +52,25 @@ sleep 2
 kill -0 "$COORD_PID" || { echo "FAIL: coordinator failed to start"; exit 1; }
 
 echo "=== 2. Starting 2 Parallel Linux Cross-Compile Workers ==="
-"$WORKER_BIN" --coordinator 127.0.0.1:9000 --slots 4 --name Worker-Alpha > "$WORK_DIR/worker1.log" 2>&1 &
+"$WORKER_BIN" --coordinator 127.0.0.1:9000 --slots 4 --direct-port 9005 --name Worker-Alpha > "$WORK_DIR/worker1.log" 2>&1 &
 WORKER1_PID=$!
 
-"$WORKER_BIN" --coordinator 127.0.0.1:9000 --slots 4 --name Worker-Beta > "$WORK_DIR/worker2.log" 2>&1 &
+"$WORKER_BIN" --coordinator 127.0.0.1:9000 --slots 4 --direct-port 9006 --name Worker-Beta > "$WORK_DIR/worker2.log" 2>&1 &
 WORKER2_PID=$!
 
 echo "Waiting for both workers to register with coordinator..."
 for attempt in $(seq 1 30); do
-    REG_COUNT=$(grep -c "Worker registered" "$WORK_DIR/coordinator.log" 2>/dev/null || true)
-    if [ "$REG_COUNT" -ge 2 ]; then
-        echo "Successfully registered $REG_COUNT workers in ${attempt}s"
+    W1_OK=$(grep -c "Registered successfully" "$WORK_DIR/worker1.log" 2>/dev/null || true)
+    W2_OK=$(grep -c "Registered successfully" "$WORK_DIR/worker2.log" 2>/dev/null || true)
+    if [ "$W1_OK" -ge 1 ] && [ "$W2_OK" -ge 1 ]; then
+        echo "Successfully verified registration for Worker-Alpha (port 9005) and Worker-Beta (port 9006) in ${attempt}s!"
         break
     fi
     if [ "$attempt" -eq 30 ]; then
-        echo "FAIL: Both workers did not register within 30s (found $REG_COUNT)"
+        echo "FAIL: Both workers did not register within 30s (W1=$W1_OK, W2=$W2_OK)"
         cat "$WORK_DIR/coordinator.log"
+        cat "$WORK_DIR/worker1.log"
+        cat "$WORK_DIR/worker2.log"
         exit 1
     fi
     sleep 1
