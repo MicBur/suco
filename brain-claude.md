@@ -267,11 +267,11 @@ invariants above, releases, and the APT/Windows publish workflows.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
-AG also built (committed on the merged `feature/qt6-gui-and-windows-benchmarks` branch — on local
-main but **not yet pushed** as of 2026-07-26): a **Qt 6 desktop control center `suco-gui.exe`**
+AG also built, now **on `main`** (PR #34): a **Qt 6 desktop control center `suco-gui.exe`**
 (system tray, worker toggle, one-click WIN-DEV attach/detach) and a **101-TU Windows benchmark**
-(≈46 s native → ≈12 s grid, ≈3.8×; the hybrid figure INCLUDES WIN-DEV, unlike the Linux-only
-numbers under "The goal").
+harness (≈46 s native → ≈12 s grid, ≈3.8×; the hybrid figure INCLUDES WIN-DEV, unlike the
+Linux-only numbers under "The goal"). Additive only — new `src/gui/` + PowerShell scripts + a
+`find_package(Qt6 ... QUIET)`-guarded CMake target, so CI without Qt6 just skips it.
 
 **The Windows worker `WIN-DEV` is opt-in, normally OUT.** Default grid = 4 Linux workers / 13
 slots; the GUI's "Start WIN-DEV Worker" attaches the local Windows box (8 slots) on demand — a
@@ -279,12 +279,14 @@ native Windows worker for GCC-14+ headers or plain extra capacity, **not** a #26
 is closed as invalid). Grid-side tests should confirm WIN-DEV is OUT first, so they run on the
 default 13 slots.
 
-Note (2026-07-26): AG also committed an unpushed `fix(client): ship -E for cross` (`6deef07`) for
-#26. **Verified unnecessary** — `<format>` cross-compiles with *and* without it once `-std=c++23`
-is passed — and it changes the Windows-cross `content_hash`, so it should be dropped before pushing,
-keeping only the GUI/benchmark commit. Coordination reminder that held up imperfectly here: shared
-code went straight to local main, not a branch+PR with Claude's byte-identity gate before merge.
-File grid-side bugs as issues; don't fix grid-side code (Claude's side — see the rules below). This
+**Resolved (2026-07-26): the two-agent git tangle around #26.** AG had committed BOTH the GUI/bench
+(`98ac658`) and an unnecessary `fix(client): ship -E for cross` (`6deef07`) directly onto local
+main, unpushed, bypassing branch+PR and Claude's verify gate. Resolution: Claude cherry-picked only
+`98ac658` onto a fresh branch from origin/main → PR #34 (landed); `6deef07` was **dropped** (it fixes
+the non-bug #26 and moves the Windows-cross `content_hash`). **origin/main is the source of truth**;
+a local main that still carries `6deef07` should be reset to origin/main. Lesson, the hard way:
+shared code goes via branch+PR from origin/main — a direct commit to local main forks the two agents
+and needs untangling. File grid-side bugs as issues; don't fix grid-side code (Claude's side). This
 section lives here because Claude owns this file; AG mirrors what it needs into `brain-ag.md`.
 
 **Coordination rules — learned the hard way (the two agents collided on THIS file):**
