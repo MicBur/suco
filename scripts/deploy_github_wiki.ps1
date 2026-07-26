@@ -2,6 +2,7 @@
 
 $wikiRepo = "https://github.com/MicBur/suco.wiki.git"
 $tmpDir = Join-Path $env:TEMP "suco_wiki_deploy"
+$srcWiki = Join-Path (Get-Location) "wiki"
 
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
@@ -16,13 +17,13 @@ if (-not (Test-Path "$tmpDir/.git")) {
 }
 
 Write-Host "=== 2. Copying Wiki Pages ==="
-Copy-Item (Join-Path $PWD "wiki/*.md") -Destination $tmpDir -Force
+Get-ChildItem "$srcWiki/*.md" | Copy-Item -Destination $tmpDir -Force
 
 Write-Host "=== 3. Committing and Pushing Wiki Pages ==="
 cd $tmpDir
 git add .
 git commit -m "docs(wiki): update SUCO Grid wiki documentation pages"
-git push origin master 2>$null; git push origin main 2>$null
-cd $PWD
+git push -u origin master 2>$null; git push -u origin main 2>$null
+cd (Get-Location)
 
 Write-Host "SUCCESS: SUCO Grid Wiki published at https://github.com/MicBur/suco/wiki"
