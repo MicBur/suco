@@ -517,6 +517,66 @@ void Coordinator::run_web_server() {
                     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                                            std::to_string(json_str.size()) + "\r\nConnection: close\r\n\r\n" + json_str;
                     send(client_sock, response.c_str(), static_cast<int>(response.size()), 0);
+                } else if (path == "/metrics") {
+                    uint64_t total_requests = 0;
+                    uint64_t cache_hits = 0;
+                    uint64_t cache_misses = 0;
+                    uint64_t jobs_success = 0;
+                    uint64_t jobs_failed = 0;
+                    size_t active_workers = 0;
+                    size_t total_slots = 0;
+                    size_t used_slots = 0;
+                    uint64_t uptime_sec = 0;
+
+                    {
+                        std::lock_guard<std::mutex> lock(m_state.mutex);
+                        total_requests = m_state.total_requests;
+                        cache_hits = m_state.cache_hits;
+                        cache_misses = m_state.cache_misses;
+                        jobs_success = m_state.jobs_success;
+                        jobs_failed = m_state.jobs_failed;
+                        auto now = std::chrono::steady_clock::now();
+                        uptime_sec = std::chrono::duration_cast<std::chrono::seconds>(now - m_state.start_time).count();
+                    }
+
+                    auto workers = m_worker_manager.get_active_workers();
+                    active_workers = workers.size();
+                    for (const auto& w : workers) {
+                        total_slots += w->slots_total;
+                        used_slots += w->slots_used;
+                    }
+
+                    std::stringstream prometheus;
+                    prometheus << "# HELP suco_coordinator_uptime_seconds Coordinator uptime in seconds\n";
+                    prometheus << "# TYPE suco_coordinator_uptime_seconds counter\n";
+                    prometheus << "suco_coordinator_uptime_seconds " << uptime_sec << "\n\n";
+
+                    prometheus << "# HELP suco_jobs_total Total compilation jobs processed by SUCO grid\n";
+                    prometheus << "# TYPE suco_jobs_total counter\n";
+                    prometheus << "suco_jobs_total{status=\"success\"} " << jobs_success << "\n";
+                    prometheus << "suco_jobs_total{status=\"failed\"} " << jobs_failed << "\n\n";
+
+                    prometheus << "# HELP suco_cache_queries_total Total L2 grid cache queries\n";
+                    prometheus << "# TYPE suco_cache_queries_total counter\n";
+                    prometheus << "suco_cache_queries_total{result=\"hit\"} " << cache_hits << "\n";
+                    prometheus << "suco_cache_queries_total{result=\"miss\"} " << cache_misses << "\n\n";
+
+                    prometheus << "# HELP suco_active_workers_count Number of active worker nodes currently connected\n";
+                    prometheus << "# TYPE suco_active_workers_count gauge\n";
+                    prometheus << "suco_active_workers_count " << active_workers << "\n\n";
+
+                    prometheus << "# HELP suco_active_slots_total Total slot capacity across all connected workers\n";
+                    prometheus << "# TYPE suco_active_slots_total gauge\n";
+                    prometheus << "suco_active_slots_total " << total_slots << "\n\n";
+
+                    prometheus << "# HELP suco_active_slots_used Number of worker slots currently executing jobs\n";
+                    prometheus << "# TYPE suco_active_slots_used gauge\n";
+                    prometheus << "suco_active_slots_used " << used_slots << "\n";
+
+                    std::string metrics_str = prometheus.str();
+                    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: " +
+                                           std::to_string(metrics_str.size()) + "\r\nConnection: close\r\n\r\n" + metrics_str;
+                    send(client_sock, response.c_str(), static_cast<int>(response.size()), 0);
                 }
             }
             close_socket(client_sock);

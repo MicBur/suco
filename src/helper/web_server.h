@@ -27,6 +27,9 @@ struct HelperStats {
     std::mutex mutex;
     std::vector<CompileJob> active_jobs;
     uint64_t total_requests = 0;
+    uint64_t jobs_success = 0;
+    uint64_t jobs_failed = 0;
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 
     struct CompletedJob {
         std::string filename;
@@ -553,12 +556,16 @@ inline void run_web_server(int port) {
         if (client_sock < 0) continue;
 
         // Spawn a light thread or handle connection inline (since it's low traffic)
-        std::thread([client_sock]() {
+        std::thread([this, client_sock]() {
             char buffer[2048];
             std::memset(buffer, 0, sizeof(buffer));
             ssize_t read_bytes = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
             if (read_bytes <= 0) {
+#ifdef _WIN32
+                closesocket(client_sock);
+#else
                 close(client_sock);
+#endif
                 return;
             }
 
@@ -579,9 +586,74 @@ inline void run_web_server(int port) {
                         file.close();
                         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: image/x-icon\r\nContent-Length: " +
                                                std::to_string(ico_data.size()) + "\r\nConnection: close\r\n\r\n" + ico_data;
-                        send_response(client_socket, response);
+                        send(client_sock, response.c_str(), response.size(), 0);
+#ifdef _WIN32
+                        closesocket(client_sock);
+#else
+                        close(client_sock);
+#endif
                         return;
                     }
+                }
+                if (path == "/metrics") {
+                    uint64_t total_requests = 0;
+                    uint64_t cache_hits = 0;
+                    uint64_t cache_misses = 0;
+                    uint64_t jobs_success = 0;
+                    uint64_t jobs_failed = 0;
+                    size_t active_workers = 0;
+                    size_t total_slots = 0;
+                    size_t used_slots = 0;
+                    uint64_t uptime_sec = 0;
+
+                    {
+                        std::lock_guard<std::mutex> lock(g_stats.mutex);
+                        total_requests = g_stats.total_requests;
+                        jobs_success = g_stats.jobs_success;
+                        jobs_failed = g_stats.jobs_failed;
+                        auto now = std::chrono::steady_clock::now();
+                        uptime_sec = std::chrono::duration_cast<std::chrono::seconds>(now - g_stats.start_time).count();
+                    }
+
+                    std::stringstream prometheus;
+                    prometheus << "# HELP suco_coordinator_uptime_seconds Coordinator uptime in seconds\n";
+                    prometheus << "# TYPE suco_coordinator_uptime_seconds counter\n";
+                    prometheus << "suco_coordinator_uptime_seconds " << uptime_sec << "\n\n";
+
+                    prometheus << "# HELP suco_jobs_total Total compilation jobs processed by SUCO grid\n";
+                    prometheus << "# TYPE suco_jobs_total counter\n";
+                    prometheus << "suco_jobs_total{status=\"success\"} " << jobs_success << "\n";
+                    prometheus << "suco_jobs_total{status=\"failed\"} " << jobs_failed << "\n\n";
+
+                    prometheus << "# HELP suco_cache_queries_total Total L2 grid cache queries\n";
+                    prometheus << "# TYPE suco_cache_queries_total counter\n";
+                    prometheus << "suco_cache_queries_total{result=\"hit\"} " << cache_hits << "\n";
+                    prometheus << "suco_cache_queries_total{result=\"miss\"} " << cache_misses << "\n\n";
+
+                    prometheus << "# HELP suco_active_workers_count Number of active worker nodes currently connected\n";
+                    prometheus << "# TYPE suco_active_workers_count gauge\n";
+                    prometheus << "suco_active_workers_count " << active_workers << "\n\n";
+
+                    prometheus << "# HELP suco_active_slots_total Total slot capacity across all connected workers\n";
+                    prometheus << "# TYPE suco_active_slots_total gauge\n";
+                    prometheus << "suco_active_slots_total " << total_slots << "\n\n";
+
+                    prometheus << "# HELP suco_active_slots_used Number of worker slots currently executing jobs\n";
+                    prometheus << "# TYPE suco_active_slots_used gauge\n";
+                    prometheus << "suco_active_slots_used " << used_slots << "\n";
+
+                    std::string metrics_str = prometheus.str();
+                    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: " +
+                                           std::to_string(metrics_str.size()) + "\r\nConnection: close\r\n\r\n" + metrics_str;
+                    send(client_sock, response.c_str(), response.size(), 0);
+#ifdef _WIN32
+                    shutdown(client_sock, 1);
+                    closesocket(client_sock);
+#else
+                    shutdown(client_sock, 1);
+                    close(client_sock);
+#endif
+                    return;
                 }
                 if (path == "/" || path == "/index.html" || path == "/dashboard.html") {
                     // Try to read dashboard.html from file
@@ -693,10 +765,20 @@ inline void run_web_server(int port) {
                     send(client_sock, err_404.c_str(), err_404.size(), 0);
                 }
             }
+#ifdef _WIN32
+            shutdown(client_sock, 1);
+            closesocket(client_sock);
+#else
+            shutdown(client_sock, 1);
             close(client_sock);
+#endif
         }).detach();
     }
+#ifdef _WIN32
+    closesocket(server_fd);
+#else
     close(server_fd);
+#endif
 }
 
 } // namespace suco

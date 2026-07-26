@@ -372,6 +372,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                 if (tos.empty() && m_cache) tos = m_cache->get_meta_target_os(hash);
                 if (tos.empty()) tos = "linux";
                 RecentJob rj{ filename, exit_code, false, node_name, tos };
+                if (exit_code == 0) m_state.jobs_success++; else m_state.jobs_failed++;
                 m_state.recent_jobs.push_back(rj);
                 if (m_state.recent_jobs.size() > 20) {
                     m_state.recent_jobs.erase(m_state.recent_jobs.begin());
@@ -591,6 +592,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
                     if (!meta_tos.empty()) hit_tos = meta_tos;
                 }
                 RecentJob rj{ query_filename, 0, true, display_name, hit_tos };
+                m_state.jobs_success++;
                 m_state.recent_jobs.push_back(rj);
                 if (m_state.recent_jobs.size() > 20) {
                     m_state.recent_jobs.erase(m_state.recent_jobs.begin());
@@ -1122,6 +1124,7 @@ void ClientHandler::handle_client_connection(socket_t client_sock) {
         if (store_tos.empty()) store_tos = target_os_from_command(command);
 
         RecentJob rj{ filename, exit_code, false, worker_name, store_tos };
+        if (exit_code == 0) m_state.jobs_success++; else m_state.jobs_failed++;
         m_state.recent_jobs.push_back(rj);
         if (m_state.recent_jobs.size() > 20) {
             m_state.recent_jobs.erase(m_state.recent_jobs.begin());

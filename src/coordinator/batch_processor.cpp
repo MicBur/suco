@@ -537,6 +537,7 @@ void BatchProcessor::compile_worker_loop() {
             }
         }
         RecentJob rj{ job.source_file, res.exit_code, false, best_worker ? best_worker->name : "", target_os_from_command(job.command) };
+        if (res.exit_code == 0) state_.jobs_success++; else state_.jobs_failed++;
         state_.recent_jobs.push_back(rj);
         if (state_.recent_jobs.size() > 20) {
             state_.recent_jobs.erase(state_.recent_jobs.begin());

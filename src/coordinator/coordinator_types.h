@@ -77,6 +77,9 @@ struct SharedCoordinatorState {
     uint64_t total_requests = 0;
     uint64_t cache_hits = 0;
     uint64_t cache_misses = 0;
+    uint64_t jobs_success = 0;
+    uint64_t jobs_failed = 0;
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
     
     // Map von Datei-Hash auf wartende Client-Sockets (Request Coalescing)
     std::unordered_map<std::string, std::vector<socket_t>> pending_compilations;
