@@ -4,7 +4,7 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-26.
+Last updated: 2026-07-26 (v0.12.0 released).
 
 ---
 
@@ -62,7 +62,7 @@ strings — memory traffic only.)
 
 ## Current state (2026-07-26)
 
-- Public repo **github.com/MicBur/suco**, released **v0.11.0** (nodes upgraded from the tag). APT
+- Public repo **github.com/MicBur/suco**, released **v0.12.0** (grid still on 0.11.0 until redeployed). APT
   repo signed + published on every `v*` tag → GitHub Pages; CI green. Docs: `docs/INSTALL.md`,
   `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
 - **The Windows→Linux cross-compile vision works out of the box.** A Windows dev runs
