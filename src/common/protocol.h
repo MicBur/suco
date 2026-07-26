@@ -38,7 +38,13 @@ enum PacketType : uint32_t {
     // (gcm.cache/<name>.gcm bytes) the TU imports. Sent ONLY for module TUs, so
     // pre-E3 workers stay wire-compatible: they reject the unknown type and the
     // client falls back to compiling locally instead of desyncing the stream.
-    PACKET_DIRECT_COMPILE_REQ_V2 = 25
+    PACKET_DIRECT_COMPILE_REQ_V2 = 25,
+    // v1.0.0 #42 (remote preprocessing): RESERVED for the future variant that
+    // ships RAW source + a project-header bundle (see docs/remote_preprocessing_impl.md)
+    // so the WORKER runs -E instead of the client. Reserved now to fix the wire
+    // number; not yet emitted or handled. Pre-1.0 workers reject the unknown type
+    // → client falls back to local, same safe degradation as V2.
+    PACKET_DIRECT_COMPILE_REQ_V3 = 26
 };
 
 /**
@@ -66,6 +72,7 @@ inline constexpr std::string_view to_string(PacketType type) noexcept {
         case PACKET_HELLO:              return "HELLO";
         case PACKET_DIRECT_COMPILE_REQ: return "DIRECT_COMPILE_REQ";
         case PACKET_DIRECT_COMPILE_REQ_V2: return "DIRECT_COMPILE_REQ_V2";
+        case PACKET_DIRECT_COMPILE_REQ_V3: return "DIRECT_COMPILE_REQ_V3";
         case PACKET_CACHE_STORE:        return "CACHE_STORE";
         case PACKET_RUN_REQ:            return "RUN_REQ";
         case PACKET_RUN_RESP:           return "RUN_RESP";
