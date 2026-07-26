@@ -52,7 +52,7 @@ jobs:
             echo "::error::Secret APT_GPG_PRIVATE_KEY is not set — see docs/INSTALL-apt.md"
             exit 1
           fi
-          echo "$APT_GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
           echo "SUCO_KEYID=$(gpg --list-keys --with-colons | awk -F: '/^pub/{print $5; exit}')" >> "$GITHUB_ENV"
 
       - name: Build signed APT repo
