@@ -363,9 +363,13 @@ The built-in dashboard on **port 9001** visualizes:
 | **Resilient Fallback**| ✅ <100ms | ⚠️ Slow fallback | ❌ No | ❌ No |
 | **Setup Time** | ✅ ~2 mins | ❌ ~30 mins | ⚠️ ~10 mins | ⚠️ ~15 mins |
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap & Milestones
 
-To see the planned milestones, future scaling goals, and how we plan to close the performance gap with commercial solutions, check out our [Project Roadmap](docs/ROADMAP.md) and the [Remote Preprocessing Design](docs/remote_preprocessing_design.md).
+- ✅ **v0.11.0 (Current)**: Heterogeneous Windows-to-Linux Cross-Compilation, Native Qt 6 Desktop Control Center (`suco-gui.exe`), NSIS Installer Setup, 4.21x Cold Speedup & 19x Warm L2 Cache Hits.
+- 🔮 **v0.12.0 (Next)**: Worker Sandboxing (`bubblewrap`), Prometheus/Grafana `/metrics` Exporter, Distributed ThinLTO.
+- 🚀 **v1.0.0 (Production)**: Remote Preprocessing, TLS/mTLS Encryption, macOS ARM64 Support.
+
+For detailed technical specifications, view the full [Project Roadmap](docs/ROADMAP.md) and [Portfolio Showcase](docs/PORTFOLIO.md).
 
 ---
 

@@ -345,9 +345,13 @@ suco/
 | **Fallback bei Ausfall** | ✅ <100ms | ⚠️ Langsam | ❌ Nein | ❌ Nein |
 | **Setup-Zeit** | ✅ ~2 Min | ❌ ~30 Min | ⚠️ ~10 Min | ⚠️ ~15 Min |
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap & Meilensteine
 
-Die geplanten Meilensteine, zukünftige Skalierungsziele und unser Konzept, um die Leistungslücke zu kommerziellen Systemen vollständig zu schließen, findest du in der [Projekt-Roadmap](docs/ROADMAP.md) sowie im Konzept für [Remote-Preprocessing](docs/remote_preprocessing_design.md).
+- ✅ **v0.11.0 (Aktuell)**: Heterogenes Windows-zu-Linux Cross-Compiling, Native Qt 6 Desktop Control Center App (`suco-gui.exe`), NSIS Installer Setup, 4,21x Cold Speedup & 19x Warm L2 Cache Hits.
+- 🔮 **v0.12.0 (Nächstes Ziel)**: Worker-Sandboxing (`bubblewrap`), Prometheus/Grafana `/metrics` Exporter, Distributed ThinLTO.
+- 🚀 **v1.0.0 (Produktion)**: Remote-Preprocessing, TLS/mTLS Verschlüsselung, macOS ARM64 Support.
+
+Detaillierte technische Spezifikationen findest du in der [Projekt-Roadmap](docs/ROADMAP.md) und im [Portfolio-Showcase](docs/PORTFOLIO.md).
 
 ---
 
