@@ -293,6 +293,13 @@ ClientConfig ClientConfig::load_or_default() {
         config.path_normalization = (std::string(path_norm_env) == "1" || std::string(path_norm_env) == "true");
     }
 
+    // v1.0.0 #42: opt-in remote preprocessing. Off by default; the wire path is
+    // not wired yet, so setting this today has no effect beyond the config read.
+    const char* rpp_env = std::getenv("SUCO_REMOTE_PREPROCESS");
+    if (rpp_env) {
+        config.remote_preprocess_enabled = (std::string(rpp_env) == "1" || std::string(rpp_env) == "true");
+    }
+
     // 4. In Umgebungsvariablen exportieren für Kindprozesse und Bibliotheken
     set_env_var("SUCO_COORDINATOR_HOST", config.coordinator_host);
     set_env_var("SUCO_COORDINATOR_PORT", std::to_string(config.coordinator_port));
