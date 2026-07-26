@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUCO Grid — YouTube Video Showcase & Benchmark Presentation</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(18, 26, 44, 0.85);
+            --border-color: rgba(0, 242, 254, 0.2);
+            --accent-cyan: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-green: #10b981;
+            --accent-purple: #9b51e0;
+            --text-main: #f3f4f6;
+            --text-sub: #9ca3af;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(11, 15, 25, 0.9);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo-box {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-box h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        .tag-badge {
+            background: rgba(0, 242, 254, 0.1);
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-blue), #3b82f6);
+            color: #fff;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-cyan);
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .stage-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            margin-bottom: 2rem;
+            position: relative;
+            min-height: 540px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .scene-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 1rem;
+        }
+
+        .scene-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .scene-step {
+            font-size: 0.9rem;
+            color: var(--text-sub);
+        }
+
+        .scene-body {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .scene-body { grid-template-columns: 1fr; }
+        }
+
+        .terminal-box {
+            background: #050811;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            font-family: 'Consolas', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .term-header {
+            background: #0d1322;
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot-red { background: #ef4444; }
+        .dot-yellow { background: #f59e0b; }
+        .dot-green { background: #10b981; }
+
+        .term-title { font-size: 0.8rem; color: var(--text-sub); margin-left: 0.5rem; }
+
+        .term-content {
+            padding: 1rem;
+            color: #d1d5db;
+            line-height: 1.6;
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .prompt { color: var(--accent-cyan); font-weight: bold; }
+        .cmd { color: #fff; }
+        .success { color: var(--accent-green); }
+        .info { color: var(--accent-blue); }
+        .highlight { color: #f59e0b; }
+
+        .visual-box {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 8, 17, 0.6);
+            border-radius: 10px;
+            border: 1px dashed var(--border-color);
+            padding: 1.5rem;
+            position: relative;
+        }
+
+        .script-box {
+            background: rgba(16, 185, 129, 0.05);
+            border-left: 4px solid var(--accent-green);
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin-top: 1.5rem;
+        }
+
+        .script-box h4 {
+            color: var(--accent-green);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.4rem;
+        }
+
+        .script-text {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #e5e7eb;
+            font-style: italic;
+        }
+
+        /* Benchmark Bars */
+        .bench-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .bench-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .bench-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .bench-bar-outer {
+            width: 100%;
+            height: 24px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bench-bar-inner {
+            height: 100%;
+            border-radius: 12px;
+            transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .bar-native { background: linear-gradient(90deg, #64748b, #94a3b8); }
+        .bar-icecream { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .bar-cold { background: linear-gradient(90deg, #ef4444, #f87171); }
+        .bar-warm { background: linear-gradient(90deg, #00f2fe, #4facfe); }
+
+        .timeline-bar {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .time-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .time-dot.active {
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--accent-cyan);
+            transform: scale(1.3);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-box">
+            <h1>SUCO GRID</h1>
+            <span class="tag-badge">v0.12.0 RELEASE</span>
+        </div>
+        <div class="nav-controls">
+            <button class="btn btn-outline" id="prevBtn" onclick="changeScene(-1)">◄ Zurück</button>
+            <button class="btn" id="nextBtn" onclick="changeScene(1)">Weiter ►</button>
+            <button class="btn btn-outline" onclick="toggleFullscreen()">📺 Vollbild</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="stage-container" id="stage">
+            <div class="scene-header">
+                <span class="scene-title" id="sceneTitle">Szene 1: Architektur & Heterogenes Grid</span>
+                <span class="scene-step" id="sceneStep">Szene 1 von 5</span>
+            </div>
+
+            <div class="scene-body" id="sceneBody">
+                <!-- Content injected dynamically by JS -->
+            </div>
+
+            <div class="script-box">
+                <h4>🎙️ YouTube Sprechertext (Voiceover Text):</h4>
+                <div class="script-text" id="scriptText">
+                    "Willkommen zu SUCO, dem freien C/C++ Compiler-Grid mit L2 Content-Addressed Caching..."
+                </div>
+            </div>
+        </div>
+
+        <div class="timeline-bar" id="timelineBar">
+            <div class="time-dot active" onclick="jumpToScene(0)" title="Architektur"></div>
+            <div class="time-dot" onclick="jumpToScene(1)" title="Linux Grid Build"></div>
+            <div class="time-dot" onclick="jumpToScene(2)" title="Windows Cross-Compile"></div>
+            <div class="time-dot" onclick="jumpToScene(3)" title="L2 Grid Cache"></div>
+            <div class="time-dot" onclick="jumpToScene(4)" title="Benchmark Comparison"></div>
+        </div>
+    </main>
+
+    <script>
+        const scenes = [
+            {
+                title: "Szene 1: Architektur & Heterogenes Grid",
+                script: "Willkommen zu SUCO Grid v0.12.0! SUCO ist ein verteiltes C/C++ Kompilierungs- und Caching-System für lokale Netzwerke. Es verbindet heterogene Knoten – wie hier einen Windows-Entwickler-PC mit mehreren Linux-Worker-Servern – mit automatischer UDP-Erkennung.",
+                term: `<span class="prompt">dev@k3master:~$</span> <span class="cmd">systemctl status suco-coordinator</span>
+● suco-coordinator.service - SUCO Lite Compile Coordinator
+   Loaded: loaded (/etc/systemd/system/suco-coordinator.service)
+   Active: active (running) since Jul 26 11:39:56 CEST
+   Main PID: 4017393 (suco-coordinator)
+[INFO] Startup complete. Running on port 9000.
+[INFO] Web dashboard REST API listening on Port 9001
+[INFO] UDP Auto-Discovery broadcast active on Port 9002
+
+<span class="prompt">dev@k3master:~$</span> <span class="cmd">suco workers</span>
+┌─────────────────┬──────────────┬───────┬────────────┬────────────────────────┐
+│ Worker Name     │ IP Address   │ Cores │ OS         │ Cross-Compilers        │
+├─────────────────┼──────────────┼───────┼────────────┼────────────────────────┤
+│ k3master        │ 192.168.0.200│ 4     │ Linux      │ g++, x86_64-w64-mingw32│
+│ Linux-Node-1    │ 192.168.0.201│ 8     │ Linux      │ g++, x86_64-w64-mingw32│
+│ Linux-Node-2    │ 192.168.0.202│ 8     │ Linux      │ g++, x86_64-w64-mingw32│
+└─────────────────┴──────────────┴───────┴────────────┴────────────────────────┘`,
+                visual: `<div style="text-align:center; padding: 2rem;">
+                    <div style="font-size:3rem; margin-bottom:1rem;">🌐 ➔ 🖥️ 🖥️ 🖥️</div>
+                    <h3 style="color:var(--accent-cyan); margin-bottom:0.5rem;">Heterogene Grid Topology</h3>
+                    <p style="color:var(--text-sub);">Windows Client ↔ Central Coordinator ↔ Linux Worker Farm</p>
+                </div>`
+            },
+            {
+                title: "Szene 2: Variante 1 — Standard Linux Grid Build",
+                script: "Variante 1 zeigt einen verteilten C++20 Build unter Linux. Über den suco Wrapper werden die Übersetzungseinheiten automatisch über Direct Dispatch ohne Koordinator-Flaschenhals an alle 3 Linux-Nodes verteilt.",
+                term: `<span class="prompt">dev@k3master:~/rocksdb$</span> <span class="cmd">suco make -j16</span>
+[INFO] SUCO Client started (Coordinator: 192.168.0.200:9000)
+[INFO] Direct dispatch active to 3 worker nodes (20 total CPU cores)
+[BUILD] Compiling db/db_impl.cc -> db_impl.o (Worker: Linux-Node-1)
+[BUILD] Compiling db/version_set.cc -> version_set.o (Worker: Linux-Node-2)
+[BUILD] Compiling table/block.cc -> block.o (Worker: k3master)
+...
+<span class="success">[SUCCESS] 342 translation units compiled in 100.7s (Icecream: 101.9s)</span>`,
+                visual: `<div style="width:100%;">
+                    <div style="font-weight:bold; margin-bottom:0.5rem; color:var(--accent-blue);">Grid Resource Allocation</div>
+                    <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:8px;">
+                        <div>Linux-Node-1 (8 Cores): <span style="color:var(--accent-green);">100% Active</span></div>
+                        <div>Linux-Node-2 (8 Cores): <span style="color:var(--accent-green);">100% Active</span></div>
+                        <div>k3master (4 Cores): <span style="color:var(--accent-green);">100% Active</span></div>
+                    </div>
+                </div>`
+            },
+            {
+                title: "Szene 3: Variante 2 — Windows Cross-Compilation (Windows → Linux)",
+                script: "Variante 2 zeigt das Highlight: Ein Entwickler auf Windows ruft suco-cl++.exe auf. Das Grid erkennt die MinGW-Toolchain und verteilt die Cross-Kompilierung auf die Linux-Knoten. Der Linux-Worker erzeugt echte Windows PE-x86-64 Objektdateien!",
+                term: `<span class="prompt">PS C:\\Projects\\suco></span> <span class="cmd">.\\suco-cl++.exe -O2 -std=c++20 -c main.cpp -o main.o</span>
+[INFO] SUCO Client started on Windows host (WIN-DEV)
+[INFO] Preprocessing main.cpp locally... Done (35ms)
+[INFO] Target toolchain: x86_64-w64-mingw32-g++
+[INFO] Dispatching job to Linux Worker (k3master:9005)...
+[INFO] Direct worker response received (Size: 42.8 KB)
+<span class="success">[SUCCESS] Written PE-x86-64 object file: main.o (Exit Code 0)</span>`,
+                visual: `<div style="text-align:center; padding: 2rem;">
+                    <div style="font-size:2.5rem; margin-bottom:0.5rem;">🪟 Windows Client</div>
+                    <div style="color:var(--accent-cyan); font-size:1.5rem; margin:0.5rem 0;">⬇️ TCP Payload ⬇️</div>
+                    <div style="font-size:2.5rem;">🐧 Linux Worker (x86_64-w64-mingw32-g++)</div>
+                </div>`
+            },
+            {
+                title: "Szene 4: Variante 3 — L2 Content-Addressed Grid Caching (Warm Build)",
+                script: "Variante 3 demonstriert den L2 SSD-Cache. Beim zweiten Durchlauf erkennt der Preprozessor den identischen SHA-256 Hash. Parsing und Optimierung werden komplett übersprungen – das fertige Binary kommt in unter 2ms vom SSD Cache!",
+                term: `<span class="prompt">dev@k3master:~/rocksdb$</span> <span class="cmd">suco make -j16</span>
+[INFO] SUCO Client started (Querying L2 Grid Cache)
+[INFO] Hash match: 5649b9cb57ea019242c4c51... -> <span class="success">CACHE HIT</span>
+[INFO] Hash match: 8f2a1b9c23ea019876c4c51... -> <span class="success">CACHE HIT</span>
+[INFO] Hash match: c3b7891290aa015543c4c51... -> <span class="success">CACHE HIT</span>
+...
+<span class="success">[SUCCESS] 342 objects served from L2 SSD Cache in 24.7s! (19x Speedup)</span>`,
+                visual: `<div style="text-align:center;">
+                    <div style="font-size:4rem; color:var(--accent-green); font-weight:bold;">19× FASTER</div>
+                    <div style="color:var(--text-sub);">Warm Rebuild: 24.7s vs Icecream 101.9s</div>
+                </div>`
+            },
+            {
+                title: "Szene 5: Benchmark & Performance Vergleich",
+                script: "Im direkten Benchmark-Vergleich zeigt SUCO seine Stärken: Während Icecream bei Rebuilds keinen Cache besitzt, beschleunigt SUCO warme Builds um das Bis zu 19-fache. Und in der GitHub Actions CI sichert ein dedizierter Multi-Runner Grid Workflow die Qualität!",
+                term: `<span class="prompt">dev@k3master:~$</span> <span class="cmd">curl http://localhost:9001/metrics</span>
+# HELP suco_jobs_total Total compilation jobs processed
+# TYPE suco_jobs_total counter
+suco_jobs_total{status="success"} 342
+# HELP suco_cache_queries_total Cache hits vs misses
+suco_cache_queries_total{result="hit"} 342
+suco_cache_queries_total{result="miss"} 0
+# HELP suco_active_workers_count Total active grid workers
+suco_active_workers_count 3`,
+                visual: `<div class="bench-container">
+                    <div class="bench-item">
+                        <div class="bench-labels"><span>🖥️ Native g++</span><span>50.8s</span></div>
+                        <div class="bench-bar-outer"><div class="bench-bar-inner bar-native" style="width: 100%;">Baseline</div></div>
+                    </div>
+                    <div class="bench-item">
+                        <div class="bench-labels"><span>🍦 Icecream</span><span>55.3s</span></div>
+                        <div class="bench-bar-outer"><div class="bench-bar-inner bar-icecream" style="width: 92%;">0.92x</div></div>
+                    </div>
+                    <div class="bench-item">
+                        <div class="bench-labels"><span>❄️ SUCO Cold</span><span>84.6s</span></div>
+                        <div class="bench-bar-outer"><div class="bench-bar-inner bar-cold" style="width: 60%;">Cold Run</div></div>
+                    </div>
+                    <div class="bench-item">
+                        <div class="bench-labels"><span>🚀 SUCO Hot (L2 Cache)</span><span>13.25s</span></div>
+                        <div class="bench-bar-outer"><div class="bench-bar-inner bar-warm" style="width: 26%;">3.84x Speedup ⚡</div></div>
+                    </div>
+                </div>`
+            }
+        ];
+
+        let currentScene = 0;
+
+        function renderScene(index) {
+            const scene = scenes[index];
+            document.getElementById('sceneTitle').innerText = scene.title;
+            document.getElementById('sceneStep').innerText = `Szene ${index + 1} von ${scenes.length}`;
+            document.getElementById('scriptText').innerText = `"${scene.script}"`;
+
+            document.getElementById('sceneBody').innerHTML = `
+                <div class="terminal-box">
+                    <div class="term-header">
+                        <span class="dot dot-red"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="term-title">SUCO Grid Terminal — ${scene.title}</span>
+                    </div>
+                    <div class="term-content">${scene.term}</div>
+                </div>
+                <div class="visual-box">
+                    ${scene.visual}
+                </div>
+            `;
+
+            // Update timeline dots
+            const dots = document.querySelectorAll('.time-dot');
+            dots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === index);
+            });
+        }
+
+        function changeScene(delta) {
+            currentScene = (currentScene + delta + scenes.length) % scenes.length;
+            renderScene(currentScene);
+        }
+
+        function jumpToScene(index) {
+            currentScene = index;
+            renderScene(currentScene);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // Initialize
+        renderScene(0);
+    </script>
+</body>
+</html>
