@@ -40,6 +40,63 @@ constexpr const char* kCdCommand = "cd /d ";
 constexpr const char* kCdCommand = "cd ";
 #endif
 
+#ifndef _WIN32
+// --- #43: sandbox the compile subprocess (opt-in via SUCO_SANDBOX=1) ---
+// A compile is untrusted execution: a hostile TU (or compiler plugin) shouldn't be
+// able to reach the network or touch the worker's filesystem. Wrap the compiler in
+// a namespace sandbox that gives it a read-only filesystem (so system headers and
+// the toolchain stay readable) with only the job dir + /tmp writable (the object is
+// written under /tmp), and no network. Namespaces do NOT change compiler output, so
+// objects stay byte-identical — verified on node3 for both backends (see
+// docs / brain-claude #43). Prefer bwrap when present; fall back to unshare (the
+// same mechanism `suco run` uses). Fails closed only in the sense that if the
+// sandbox tool errors the compile fails — and it is opt-in, so default behaviour
+// is unchanged.
+bool compile_sandbox_enabled() {
+    const char* e = std::getenv("SUCO_SANDBOX");
+    return e && (std::strcmp(e, "1") == 0 || std::strcmp(e, "true") == 0);
+}
+bool have_bwrap() {
+    static int cached = -1;
+    if (cached < 0) cached = (std::system("command -v bwrap >/dev/null 2>&1") == 0) ? 1 : 0;
+    return cached == 1;
+}
+std::string sh_squote(const std::string& s) {
+    std::string r = "'";
+    for (char c : s) { if (c == '\'') r += "'\\''"; else r += c; }
+    r += "'";
+    return r;
+}
+// Wrap `compile_cmd` (a plain compiler invocation, no leading `cd`) so it runs
+// sandboxed with CWD = job_dir. Returns compile_cmd unchanged when the sandbox is off.
+std::string sandbox_wrap_compile(const std::string& compile_cmd, const std::string& job_dir) {
+    if (!compile_sandbox_enabled()) {
+        return std::string(kCdCommand) + "\"" + job_dir + "\" && " + compile_cmd;
+    }
+    const char* net = std::getenv("SUCO_SANDBOX_NET");
+    const bool allow_net = net && (std::strcmp(net, "1") == 0 || std::strcmp(net, "true") == 0);
+
+    if (have_bwrap()) {
+        // Read-only everything, then re-expose /tmp read-write (job dir + object live there).
+        std::string b = "bwrap --ro-bind / / --bind /tmp /tmp --dev /dev --proc /proc --die-with-parent";
+        if (!allow_net) b += " --unshare-net";
+        b += " --chdir " + sh_squote(job_dir) + " /bin/sh -c " + sh_squote(compile_cmd);
+        return b;
+    }
+    // unshare fallback: unprivileged user+mount+pid[+net] ns, remount ro, /tmp rw.
+    std::string inner =
+        "mount --make-rprivate / 2>/dev/null || true; "
+        "for m in $(awk '{print $2}' /proc/self/mounts | sort -r); do "
+        "mount -o remount,ro,bind \"$m\" \"$m\" 2>/dev/null || true; done; "
+        "mount -t proc none /proc 2>/dev/null || true; "
+        "mount --bind /tmp /tmp 2>/dev/null && mount -o remount,rw,bind /tmp /tmp 2>/dev/null || true; "
+        "cd " + sh_squote(job_dir) + " && ( " + compile_cmd + " )";
+    std::string un = "unshare --user --map-root-user --mount --pid --fork";
+    if (!allow_net) un += " --net";
+    return un + " /bin/sh -c " + sh_squote(inner);
+}
+#endif
+
 // Picks the name the preprocessed input is written under inside the job directory.
 // It lands in the object's STT_FILE symbol and debug info, so reproducing the client's
 // own (relative) path is what makes grid objects match native ones.
@@ -276,7 +333,13 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
         // __FILE__ must keep resolving via the client's line markers. GCC 4.3+/clang.
         final_cmd += " \"-fdebug-prefix-map=" + job_dir + "=.\"";
     }
+#ifndef _WIN32
+    // #43: run the compiler sandboxed (no-op unless SUCO_SANDBOX=1); this also
+    // supplies the `cd <job_dir> &&` that the plain path needs.
+    final_cmd = sandbox_wrap_compile(final_cmd, job_dir);
+#else
     final_cmd = kCdCommand + ("\"" + job_dir + "\" && " + final_cmd);
+#endif
 
     if (std::getenv("SUCO_DEBUG_PAYLOAD")) {
         SUCO_LOG_INFO("[PAYLOAD-CMD] {}", final_cmd);
@@ -313,8 +376,12 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
             fallback_out.write(filtered_fallback.data(), filtered_fallback.size());
             fallback_out.close();
 
-            std::string fallback_cmd = kCdCommand + ("\"" + job_dir + "\" && " +
-                rebuild_compiler_command(command, rel_name, temp_out, is_msvc, is_c, toolchain_hash, false));
+            std::string fallback_inner = rebuild_compiler_command(command, rel_name, temp_out, is_msvc, is_c, toolchain_hash, false);
+#ifndef _WIN32
+            std::string fallback_cmd = sandbox_wrap_compile(fallback_inner, job_dir);
+#else
+            std::string fallback_cmd = kCdCommand + ("\"" + job_dir + "\" && " + fallback_inner);
+#endif
             result.log = run_local_capture(fallback_cmd, compile_exit, timeout_seconds);
             result.exit_code = compile_exit;
             result.header_cache_hit = false;
