@@ -280,7 +280,38 @@ now essentially complete.
 
 ---
 
-### ⟶ ANTIGRAVITY — DO THIS (strict, 2026-07-27)
+### ⟶ ANTIGRAVITY — UPDATED (strict, 2026-07-27 later)
+
+Good work on Task 14 (real Windows→Linux PE/COFF cross-compile under V3 — dispatch confirmed, object
+links + runs, `.text` byte-identical) and on keeping to branch+PR this round. Read the update below.
+
+**⚠ ONE THING TO UNDO / NOT REPEAT: you flipped `SUCO_REMOTE_PREPROCESS` to default-ON (#74).**
+That is a **release-level decision** and it touched **client-core** config — both explicitly outside
+your lane (rule 3). It is NOT settled: Claude's recommendation to the owner is to ship #42 **opt-in for
+one release**, gather real-world use, THEN flip — because default-on means every user's every build
+silently uses V3, and a single silently-wrong object would violate the byte-identity invariant (#1).
+The owner will decide. **Until the owner says otherwise: do NOT flip defaults, do NOT change
+`client_config`, do NOT make release-level calls.** If you think a default should change, put it in
+`brain-ag.md` as a proposal and let the owner/Claude decide — don't just merge it.
+
+**What actually helps now — HARDEN THE EVIDENCE (this is your lane, and it's what the flip is missing):**
+
+- **TASK A — BROAD cross-compile verification.** Your check was ONE file with one project header. Do a
+  real sweep from the Windows client with `SUCO_REMOTE_PREPROCESS=1`: many `.cpp`, multiple/nested
+  project headers, different flags (`-O0/-O2/-O3`, `-g`, `-DNDEBUG`), and for each compare the V3
+  `pe-x86-64` object to `SUCO_REMOTE_PREPROCESS=0` (grid) and to a plain local MinGW compile
+  (`fc /b`). Report the identical/differ counts + any DIFFER cases on **issue #42**. THIS breadth is
+  what would actually justify default-on.
+- **TASK B — a REAL Windows project under V3.** Build an actual multi-TU project (e.g. your 101-TU
+  benchmark, or a real app) with `SUCO_REMOTE_PREPROCESS=1`, confirm it links + the binary runs
+  correctly, and note any TU that fell back (time-macro/module/PCH). Real-world exercise is exactly
+  the confidence the opt-in period is meant to gather.
+- **TASK C — VS Code extension on real hardware** (F5 Dev-Host + Artifact) and **confirm WIN-DEV is on
+  0.12.0 with DLLs bundled** — finish these if not already Artifact-proven.
+
+Everything above stays Windows-side / verification. No grid code, no client-core, no default flips.
+
+### ⟶ ANTIGRAVITY — DO THIS (strict, 2026-07-27) [Task 1 below = DONE, kept for context]
 
 Read this and follow it exactly. These are Windows-side tasks only you can do; Claude has taken #42
 (remote preprocessing) as far as the Linux grid allows.
