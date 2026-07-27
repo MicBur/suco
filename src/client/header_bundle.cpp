@@ -131,6 +131,15 @@ BuildResult build_header_bundle(const CompilerCommand& cmd, const std::string& p
             SUCO_LOG_INFO("header_bundle: unreadable project header {} for {}, falling back", abs.string(), cmd.source_file);
             return result;
         }
+        // Remote preprocessing would expand __DATE__/__TIME__ on the WORKER's clock.
+        // The raw-source check in enable_remote_preprocess can't see a macro introduced
+        // by a header, so flag it here where we have the header text.
+        if (!result.has_time_macros &&
+            (content.find("__DATE__") != std::string::npos ||
+             content.find("__TIME__") != std::string::npos ||
+             content.find("__TIMESTAMP__") != std::string::npos)) {
+            result.has_time_macros = true;
+        }
         files.push_back(File{ to_forward_slash(rel.generic_string()), std::move(content) });
     }
 
@@ -158,6 +167,10 @@ bool enable_remote_preprocess(CompilerCommand& cmd, const suco::CacheKeyInput& k
 
     BuildResult bundle = build_header_bundle(cmd, abs_root);
     if (!bundle.ok) return false;
+    // A project header pulls in __DATE__/__TIME__ — must preprocess locally (the
+    // worker's clock would differ). Catches the header case the raw-source check below
+    // cannot see.
+    if (bundle.has_time_macros) return false;
 
     std::ifstream sf(cmd.source_file, std::ios::binary);
     if (!sf) return false;
