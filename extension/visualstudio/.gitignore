@@ -1,0 +1,7 @@
+# Visual Studio / MSBuild build output and local files
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.vsix
