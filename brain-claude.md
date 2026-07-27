@@ -371,17 +371,21 @@ builds until byte-identity is proven:
   by calling the actual function on node3: `-O2` byte-identical to native; `-g` deterministic
   rpp↔rpp; identical under `SUCO_SANDBOX=1`. Dormant (no V3 receive branch yet), GCC/MinGW only.
 
-**NOT done — the WIRE slice only** (all hard logic is landed + proven above; this is the assembly):
-1. worker V3 receive branch in `worker.cpp` (parse the V3 frame → call `execute_remote_preprocess`
-   → respond via the existing writer); 2. client V3 send in `network_client.cpp` (raw source +
-   bundle + absolute `-I`/`project_root`, gated by `SUCO_REMOTE_PREPROCESS`); 3. the V3 cache key
-   from `{normalised command, raw source bytes, bundle hash}` threaded through the client's
-   query/store (job_sender / pipeline_orchestrator). #3 is the one part that touches the
-   byte-identity-critical CLIENT cache path — a wrong key would serve a wrong object (contained: the
-   flag is off by default). Best done as one unit with an end-to-end `SUCO_REMOTE_PREPROCESS=1` grid
-   run on a real project (not just the smoke corpus). Wire framing is fully specced in
-   `docs/remote_preprocessing_impl.md` §2. Other v1.0 items (#44 mTLS, #45 job stealing) are
-   Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
+- **#59 (landed) — the WIRE is DONE + grid-verified.** `SUCO_REMOTE_PREPROCESS=1` end-to-end:
+  client builds the bundle + a V3 cache key (`enable_remote_preprocess`, shared by job_sender AND
+  pipeline_orchestrator — the ACTIVE path is the latter/BatchSender, not JobSender), ships RAW source
+  + bundle (V3 send in `try_compile_direct`), worker V3 receive branch → `handle_remote_preprocess_job`
+  → `execute_remote_preprocess`. Verified on node3: worker logs `Compiling direct RPP job`, 7/7 remote,
+  7/7 cache hits, binary runs; no-flag default path unchanged (regression-checked); all 8 CI checks
+  green. **#42 correctness is COMPLETE.**
+
+**Remaining for #42 = OPTIMISATION only** (not correctness): the client still runs a redundant local
+`-E` for V3 TUs, so the client-CPU win isn't realised yet. The fix is a hot-path reorder — decide
+V3-eligibility BEFORE `pipeline_orchestrator.cpp:367`'s `-E` and skip it (plan in
+`docs/remote_preprocessing_impl.md` §6). Deserves its own focused change, not an end-of-session
+bolt-on. Also pending: bundle dedup via the blob cache. The opt-in flag stays OFF until the CPU win
+lands + a real-project byte-identity sweep. Other v1.0 items (#44 mTLS, #45 job stealing) are
+Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
 
 **#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
 worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs
