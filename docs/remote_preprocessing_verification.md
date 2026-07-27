@@ -69,6 +69,23 @@ V3 objects are deterministic across workers/runs (different workspace temp dirs)
 `SUCO_REMOTE_PREPROCESS=1` asserts 7/7 coordinator cache hits on recompile (a hit requires
 byte-identical objects between passes) and that the worker actually ran V3 jobs.
 
+## 4. The client-CPU benefit (the point of the feature)
+
+Measured aggregate client CPU (`user+sys`, `/usr/bin/time`) over 35 header-heavy TUs,
+loopback grid, normal path vs V3:
+
+| Path | Client CPU (35 TUs) |
+| :--- | :--- |
+| Normal (local `-E` preprocessing) | **4.79 s** |
+| V3 (skip `-E`; cheap `-MM` scan + bundle) | **2.79 s** |
+| | **−41.8 % (1.72× less client CPU)** |
+
+The client offloads the expensive `-E` expansion to the worker and only runs the light
+`-MM` dependency scan + bundle pack locally. The win **scales with header weight** — the
+heavier the includes (templates, big STL/third-party headers, PCH-style umbrella headers),
+the larger the `-E` this avoids; light TUs benefit less. ~42 % here is a representative
+mid-weight figure, not a floor or ceiling.
+
 ## Conclusion
 
 - **Path-insensitive code:** V3 is bit-for-bit identical to a native compile (240/240).
