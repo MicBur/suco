@@ -3,6 +3,7 @@
 #include "toolchain_manager.h"
 #include "header_cache.h"
 #include "hash_util.h"
+#include "../common/header_bundle_format.h"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -410,6 +411,109 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
         std::filesystem::remove_all(job_dir, cleanup_ec);
     }
 
+    return result;
+}
+
+namespace {
+// #42: build the compile command for a remote-preprocess job. Unlike the normal
+// path (rebuild_compiler_command), the input is RAW source, so we keep the -I
+// flags (remapped to the workspace) and use `-x c++`, NOT `-x c++-cpp-output`.
+// Strips the client's -o/-c/-I (re-derived here); adds `-ffile-prefix-map=<job_dir>=.`
+// which is the one flag needed for byte-identity under -g (verified, §4a).
+std::string build_rpp_command(const std::string& orig_cmd,
+                              const std::vector<std::string>& remapped_includes,
+                              const std::string& rel_name, const std::string& temp_out,
+                              const std::string& job_dir, const std::string& toolchain_hash,
+                              bool is_c) {
+    std::stringstream ss(orig_cmd);
+    std::string word, out;
+    bool skip_next = false, is_first = true;
+    while (ss >> word) {
+        if (skip_next) { skip_next = false; continue; }
+        if (word == "-o") { skip_next = true; continue; }
+        if (word == "-c" || word == "-") continue;
+        if (word == "-I") { skip_next = true; continue; }   // separated -I <path>
+        if (word.rfind("-I", 0) == 0) continue;             // attached -I<path>
+        if (is_first) {
+            is_first = false;
+            if (!toolchain_hash.empty()) {
+                std::string tc = ToolchainManager::get_toolchain_path(toolchain_hash);
+                word = word.starts_with("/") ? tc + word : tc + "/" + word;
+            }
+        }
+        out += word + " ";
+    }
+    for (const auto& inc : remapped_includes) out += inc + " ";
+    out += std::string(is_c ? "-x c" : "-x c++") + " -c \"" + rel_name + "\" -o \"" + temp_out + "\"";
+    out += " \"-ffile-prefix-map=" + job_dir + "=.\"";
+    return out;
+}
+} // namespace
+
+JobExecutor::Result JobExecutor::execute_remote_preprocess(const RemoteJob& job, int timeout_seconds) {
+    Result result;
+    if (check_is_msvc(job.command)) {
+        result.exit_code = -6;
+        result.log = "suco-worker error: remote preprocessing does not support MSVC";
+        return result;
+    }
+
+    std::string fn_clean = job.filename;
+    while (!fn_clean.empty() && fn_clean.back() == '\0') fn_clean.pop_back();
+    bool is_c = (fn_clean.size() >= 2 && fn_clean.compare(fn_clean.size() - 2, 2, ".c") == 0);
+    const std::string ext = is_c ? ".c" : ".cpp";
+
+    std::error_code ec;
+    std::string job_dir = get_temp_file(".job");
+    std::filesystem::remove(job_dir, ec); ec.clear();
+    std::filesystem::create_directories(job_dir, ec);
+    if (ec) { result.exit_code = -3; result.log = "suco-worker error: rpp job dir: " + ec.message(); return result; }
+
+    // Lay out the project headers, then the raw source at its original relative path.
+    if (!suco::header_bundle::materialize(job.bundle_archive, job_dir)) {
+        result.exit_code = -3; result.log = "suco-worker error: rpp failed to materialize header bundle";
+        std::filesystem::remove_all(job_dir, ec); return result;
+    }
+    std::string rel_name = job_source_name(fn_clean, ext, /*is_msvc=*/false);
+    std::string temp_in = job_dir + "/" + rel_name;
+    { std::filesystem::path p(temp_in); if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec); }
+    {
+        std::ofstream o(temp_in, std::ios::binary);
+        if (!o) { result.exit_code = -3; result.log = "suco-worker error: rpp write source failed"; std::filesystem::remove_all(job_dir, ec); return result; }
+        o.write(job.source.data(), job.source.size());
+    }
+
+    std::string temp_out = get_temp_file(".o");
+    auto remapped = suco::header_bundle::remap_include_flags(job.include_flags, job.project_root, job_dir);
+    std::string compile_cmd = build_rpp_command(job.command, remapped, rel_name, temp_out, job_dir, job.toolchain_hash, is_c);
+#ifndef _WIN32
+    std::string final_cmd = sandbox_wrap_compile(compile_cmd, job_dir);
+#else
+    std::string final_cmd = std::string(kCdCommand) + "\"" + job_dir + "\" && " + compile_cmd;
+#endif
+
+    if (std::getenv("SUCO_DEBUG_PAYLOAD")) SUCO_LOG_INFO("[RPP-CMD] {}", final_cmd);
+
+    int exit_code = 0;
+    result.log = run_local_capture(final_cmd, exit_code, timeout_seconds);
+    result.exit_code = exit_code;
+
+    if (exit_code == 0) {
+        std::ifstream in(temp_out, std::ios::binary | std::ios::ate);
+        if (in.is_open()) {
+            std::streamsize size = in.tellg();
+            in.seekg(0, std::ios::beg);
+            result.binary.resize(size);
+            in.read(reinterpret_cast<char*>(result.binary.data()), size);
+        } else {
+            result.exit_code = -2;
+            result.log += "\nsuco-worker error: rpp failed to read object: " + temp_out;
+        }
+    }
+    if (!std::getenv("SUCO_DEBUG_PAYLOAD")) {
+        std::remove(temp_out.c_str());
+        std::filesystem::remove_all(job_dir, ec);
+    }
     return result;
 }
 

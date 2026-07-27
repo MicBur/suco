@@ -39,6 +39,26 @@ public:
                           const std::string& header_set_source = "",
                           const std::vector<std::pair<std::string, std::string>>& module_cmis = {});
 
+    // v1.0.0 #42 — remote preprocessing. Inputs for compiling a TU from RAW source
+    // plus a shipped project-header bundle, instead of client-preprocessed source.
+    struct RemoteJob {
+        std::string command;        // the client's compiler command (flags kept; -I/-o/-c are re-derived)
+        std::string filename;       // client's relative source path (e.g. "src/foo.cpp")
+        std::string source;         // RAW source bytes (NOT preprocessed)
+        std::string project_root;   // absolute, normalised — for include remap
+        std::vector<std::string> include_flags; // original -I<abspath> flags (absolute)
+        std::string bundle_archive; // header_bundle::pack() output (UNCOMPRESSED)
+        std::string toolchain_hash; // optional
+    };
+
+    // Compile a RemoteJob: materialize the header bundle into a private workspace,
+    // remap -I to it, write the raw source at its original relative path, and compile
+    // with `-x c++` + `-ffile-prefix-map=<workspace>=.` so the object is deterministic
+    // and byte-identical to native (verified — see docs/remote_preprocessing_impl.md
+    // §4a). Honours SUCO_SANDBOX. Returns exit_code<0 on setup failure so the caller
+    // can fall back to local. GCC/MinGW only (returns an error for MSVC).
+    static Result execute_remote_preprocess(const RemoteJob& job, int timeout_seconds);
+
     static std::string run_local_capture(const std::string& cmd, int& exit_code, int timeout_seconds);
     static std::string get_temp_file(const std::string& suffix);
 
