@@ -40,6 +40,13 @@ jobs:
           SUCO_REMOTE_PREPROCESS: "1"
         run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
 
+      - name: Run smoke test with classic preprocessing (non-V3 path)
+        # Pin the classic local-preprocess path explicitly so it stays covered
+        # regardless of what SUCO_REMOTE_PREPROCESS defaults to.
+        env:
+          SUCO_REMOTE_PREPROCESS: "0"
+        run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
+
       - name: Run cache-correctness suite (no cache poisoning / miscompilation)
         run: bash tests/cache_correctness_test.sh "$GITHUB_WORKSPACE/build"
 
