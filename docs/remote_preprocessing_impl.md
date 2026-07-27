@@ -5,7 +5,15 @@ This file is the **executable plan**: the exact wire framing, worker command
 reconstruction, and the byte-identity procedure that gates default-on. It is
 grounded in the current code, so the remaining wire slice is a small, verifiable diff.
 
-## Status
+## Status — WIRE COMPLETE (correctness), opt-in (2026-07-27)
+
+The end-to-end path is landed and grid-verified (#59): `SUCO_REMOTE_PREPROCESS=1` →
+client ships RAW source + bundle → worker preprocesses (`Compiling direct RPP job`) →
+byte-identical, deterministic objects (7/7 cache hits), binary runs; no-flag default
+unchanged. Remaining work is OPTIMISATION only (§6): the client still runs a redundant
+local `-E` for V3 TUs, so the client-CPU win isn't realised yet.
+
+## Status (history)
 
 - **Done & merged (dormant):** the byte-deterministic bundle format
   (`src/common/header_bundle_format.*`: `pack`/`unpack`/`materialize`/`remap_include_flags`),
@@ -145,6 +153,15 @@ sets the flag.
   its hash; workers fetch by hash instead of receiving it inline every TU. The design
   doc's BUNDLE_QUERY/TRANSFER/REQ (19–21) are unnecessary — those numbers are already
   taken and the generic blob cache already does content-addressed storage.
-- **Skip local `-E`** in `pipeline_orchestrator` for V3 TUs — the actual client-CPU win.
+- **Skip local `-E`** for V3 TUs — the actual client-CPU win, and the one remaining
+  piece to make #42 deliver its value. Today `enable_remote_preprocess` runs at
+  `pipeline_orchestrator.cpp` ~line 433, AFTER the `-E` at line 367, so V3 TUs pay for
+  both `-E` (expensive) and `-MM` (cheap, inside `build_header_bundle`). The win:
+  decide V3-eligibility BEFORE line 367 — if `build_header_bundle` succeeds (cheap
+  `-MM`), skip the `-E` (`pp_args`/`run_local_capture`) and route the job straight to
+  the V3 cache-query + dispatch with the V3 content_hash, bypassing the
+  normalize/preprocessed-hash stages entirely. This is a hot-path reorder of the
+  per-job flow (the downstream normalize/cache/dispatch is built around `pp_output`),
+  so it wants its own focused change + a no-flag regression run, not a bolt-on.
 - **System-header drift guard** (design §6.2): optionally include selected system
   headers in the bundle when worker/client toolchains differ.
