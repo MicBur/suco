@@ -35,6 +35,11 @@ jobs:
       - name: Run smoke test (loopback grid + cache hit)
         run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
 
+      - name: Run smoke test with remote preprocessing (#42, V3 path)
+        env:
+          SUCO_REMOTE_PREPROCESS: "1"
+        run: bash tests/ci_smoke_test.sh "$GITHUB_WORKSPACE/build"
+
       - name: Run cache-correctness suite (no cache poisoning / miscompilation)
         run: bash tests/cache_correctness_test.sh "$GITHUB_WORKSPACE/build"
 
