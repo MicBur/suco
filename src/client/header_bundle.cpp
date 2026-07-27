@@ -165,6 +165,14 @@ bool enable_remote_preprocess(CompilerCommand& cmd, const suco::CacheKeyInput& k
     ss << sf.rdbuf();
     std::string raw = ss.str();
 
+    // Conservative guards for the skip-local-E path: a TU that would preprocess
+    // DIFFERENTLY on the worker must not go remote. Reject __DATE__/__TIME__/
+    // __TIMESTAMP__ (they would capture the worker's clock, not the client's) and
+    // C++20 modules (`import`/`module` need CMI handling the V3 path doesn't do).
+    // These checks work on raw source because both survive preprocessing. A false
+    // positive just falls back to normal preprocessing — correct beats fast.
+    if (suco::contains_time_macros(raw) || suco::uses_cxx_modules(raw)) return false;
+
     std::string v3_hash = suco::compute_cache_hash(raw + "\x1E" + bundle.hash, key, ctx);
     if (v3_hash.empty()) return false;
 
