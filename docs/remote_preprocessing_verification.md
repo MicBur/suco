@@ -43,23 +43,29 @@ normalisation the existing preprocessed grid path already performs (via
 `-ffile-prefix-map`), so a V3 object is as relocatable and deterministic as any grid
 object today — it is not a miscompile.
 
-## 2b. Windows→Linux cross-compile — V3 is a byte-identical drop-in for the grid
+## 2b. Windows→Linux cross-compile — status (NOT yet verified on real PE/COFF)
 
-Sweeping the MinGW cross-target (`x86_64-w64-mingw32-g++`, `pe-x86-64` objects) initially
-showed V3 differing from a plain native cross-compile. Investigation found **two separate
-things**:
+**Correction (honest):** an initial attempt to sweep the MinGW cross-target on the Linux
+grid host was flawed. Invoking `suco-cl++ x86_64-w64-mingw32-g++ …` on **Linux** is not a
+recognised cross-compile — the wrapper defaults to the local `g++` (Linux target), so both
+the grid and V3 produced **ELF** objects, while a plain `x86_64-w64-mingw32-g++` produced
+**PE/COFF**. Section analysis (`.eh_frame`/`.note.GNU-stack` vs `.pdata`/`.xdata`) and `file`
+(ELF vs PE) confirmed this. So "V3 == grid" there was a *Linux* comparison, not a
+Windows-target one, and the earlier "grid differs from native" was just ELF-vs-PE (see
+closed issue #67).
 
-1. **A real V3 bug (fixed):** the V3 base command used `cmd.compiler_path` (the LOCAL
-   compiler) instead of the resolved `cmd.get_remote_compiler_name()`, so a MinGW target
-   was compiled with the local `g++` — wrong architecture. Fixed to match the normal path.
-2. **A pre-existing grid property (not V3):** even the NORMAL grid cross-compile object
-   differs from a plain-native one (e.g. 3064 vs 1450 bytes for a trivial TU). This is a
-   property of the existing grid cross path, independent of remote preprocessing.
+What IS true:
+- **A real V3 bug was found and fixed (#66):** the V3 base command used `cmd.compiler_path`
+  (the local compiler) instead of `cmd.get_remote_compiler_name()` — the target-qualified
+  name the normal path uses. For a real MinGW cross-target these differ, and using the
+  resolved remote name is correct **by construction** (V3 now mirrors the proven normal
+  dispatch path).
+- V3 and the normal grid path produce identical objects for the same client invocation
+  (verified on Linux) — the shared cache-store/response tail is unchanged.
 
-After the fix, **V3 == the normal grid cross-compile path, byte-for-byte** (`SAME-DROPIN`).
-So switching the default to V3 changes nothing for grid cross-compile users — the correct
-drop-in criterion. (The separate grid-vs-native cross-compile size gap is worth its own
-look but is out of scope for #42.)
+**Still to verify:** a true Windows→Linux cross-compile (PE/COFF) under V3, which requires a
+**Windows client** (the wrapper only defaults to the MinGW target there). This is AG's turf
+(the Windows side) and is the remaining cross-compile check before defaulting V3 on.
 
 ## 3. Determinism (the cache invariant)
 
