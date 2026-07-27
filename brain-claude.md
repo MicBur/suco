@@ -365,14 +365,23 @@ builds until byte-identity is proven:
   deterministic across workspaces for `-O2`; `-g` needs exactly one flag, `-ffile-prefix-map=<ws>=.`
   (analogous to the existing `-fdebug-prefix-map`). Findings + the V3 cache-key derivation are in
   `docs/remote_preprocessing_impl.md` §4a.
+- **#57 (landed) — the worker compile function is DONE + proven.**
+  `JobExecutor::execute_remote_preprocess()` (job_executor.cpp) does the real remote compile
+  (materialize + remap + `-x c++` + `-ffile-prefix-map`, honours `SUCO_SANDBOX`). Verified END-TO-END
+  by calling the actual function on node3: `-O2` byte-identical to native; `-g` deterministic
+  rpp↔rpp; identical under `SUCO_SANDBOX=1`. Dormant (no V3 receive branch yet), GCC/MinGW only.
 
-**NOT done — the wire slice** (client V3 send + worker V3 receive/`execute_remote_preprocess` + V3
-cache key from `{command, raw source, bundle hash}`). Its OWN functions (V3 ships RAW source + bundle;
-worker compiles with `-x c++` + remapped `-I` + `-ffile-prefix-map`, NOT `-x c++-cpp-output` — so it
-must NOT reuse `rebuild_compiler_command`/`handle_compile_job`). Now de-risked plumbing (byte-identity
-proven), not research; land it with the §5 grid `cmp` across the RocksDB/GoogleTest corpora. Other
-v1.0 items (#43 sandbox compile-path, #44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS
-is blocked on a build host.
+**NOT done — the WIRE slice only** (all hard logic is landed + proven above; this is the assembly):
+1. worker V3 receive branch in `worker.cpp` (parse the V3 frame → call `execute_remote_preprocess`
+   → respond via the existing writer); 2. client V3 send in `network_client.cpp` (raw source +
+   bundle + absolute `-I`/`project_root`, gated by `SUCO_REMOTE_PREPROCESS`); 3. the V3 cache key
+   from `{normalised command, raw source bytes, bundle hash}` threaded through the client's
+   query/store (job_sender / pipeline_orchestrator). #3 is the one part that touches the
+   byte-identity-critical CLIENT cache path — a wrong key would serve a wrong object (contained: the
+   flag is off by default). Best done as one unit with an end-to-end `SUCO_REMOTE_PREPROCESS=1` grid
+   run on a real project (not just the smoke corpus). Wire framing is fully specced in
+   `docs/remote_preprocessing_impl.md` §2. Other v1.0 items (#44 mTLS, #45 job stealing) are
+   Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
 
 **#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
 worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs
