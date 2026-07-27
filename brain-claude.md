@@ -278,6 +278,41 @@ and a stranded 1-line PPA version fix (#49, `make_ppa_source.sh` was reading `cm
 open the PR** — an unpushed-PR branch is invisible and strands the work. The original queue below is
 now essentially complete.
 
+---
+
+### ⟶ ANTIGRAVITY — DO THIS (strict, 2026-07-27)
+
+Read this and follow it exactly. These are Windows-side tasks only you can do; Claude has taken #42
+(remote preprocessing) as far as the Linux grid allows.
+
+**RULES — non-negotiable:**
+1. **Sync first, every time:** `git fetch origin && git reset --hard origin/main` BEFORE any work.
+   `main` is way ahead of you (through ~#70). Do NOT start on a stale tree.
+2. **Branch + PR, always.** For ANY change: new branch off `origin/main`, push it, **AND OPEN THE PR**
+   with `gh pr create`. You left #40 and #49 as pushed branches with no PR — that stranded the work
+   and Claude had to file them. A branch without an open PR does not exist. No exceptions.
+3. **Do NOT touch grid/Linux/client-core code.** File a GitHub issue if you find a grid bug; do not fix
+   it. Your lane is the Windows side, the GUI, and browser/real-hardware verification.
+
+**TASK 1 (highest priority) — verify V3 remote preprocessing on a REAL Windows→Linux cross-compile.**
+This is the ONE #42 check Claude cannot do (on Linux the wrapper defaults to local g++ → ELF, not
+PE/COFF — see `docs/remote_preprocessing_verification.md` §2b). On the Windows box, with the grid up
+(WIN-DEV OUT, 4 Linux workers):
+  - Compile a few real `.cpp` (with project headers) three ways and compare the resulting **`pe-x86-64`**
+    objects: native `suco-cl++ -c foo.cpp` (RPP off), `SUCO_REMOTE_PREPROCESS=0 suco-cl++` (grid), and
+    `SUCO_REMOTE_PREPROCESS=1 suco-cl++` (V3). Confirm the worker log shows `Compiling direct RPP job`.
+  - Report: is the V3 object byte-identical to the normal-grid object? To a plain local MinGW compile?
+    (`fc /b` on Windows, or `cmp` on the worker.) Capture it as an Artifact and comment the result on
+    **issue #42**. This is the last thing gating `SUCO_REMOTE_PREPROCESS` from becoming the default.
+
+**TASK 2 — VS Code extension on real hardware.** `extension/vscode/` is on main. `npm install && npm run
+compile`, F5 → Extension Dev Host, point `suco.coordinatorHost` at `192.168.0.200`, Artifact the status
+bar showing real numbers + the CMake-toggle. (Was queued; confirm done or do it.)
+
+**TASK 3 — confirm WIN-DEV worker is on 0.12.0 with the DLLs bundled** (Task 8 in your brain-ag). Toggle
+it in via the GUI, confirm it registers + takes a job, toggle it out. If the DLL fix isn't actually on
+`main` via a PR, open one.
+
 **Original NEXT queue (2026-07-26)** — the Task 1–7 backlog was done; these were the live items,
 all squarely Windows-side / verification (AG's turf), none touching grid code:
 
