@@ -28,6 +28,7 @@ struct BuildResult {
     std::string archive_zstd;    // zstd-compressed packed archive (what goes on the wire)
     std::vector<std::string> paths;  // relative paths included, for logging/diagnostics
     size_t uncompressed_size = 0;
+    bool has_time_macros = false;    // a project header references __DATE__/__TIME__/__TIMESTAMP__
 };
 
 // Build the project-header bundle for `cmd`. `project_root` bounds what counts as

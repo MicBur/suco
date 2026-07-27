@@ -329,8 +329,28 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
             return;
         }
         
+        // #42: decide remote preprocessing BEFORE the local -E, so eligible TUs skip
+        // it entirely (the client-CPU win). Gated by SUCO_REMOTE_PREPROCESS, so the
+        // whole branch is inert by default; enable_remote_preprocess also rejects
+        // module / time-macro TUs (which must preprocess locally). On success we have a
+        // dispatchable job (V3 cache key + raw source + bundle) without running -E.
+        bool v3 = false;
+        if (config_.remote_preprocess_enabled) {
+            suco::CacheKeyInput v3key{
+                cmd.get_target_architecture(), cmd.get_compiler_version(),
+                cmd.language_standard, suco::join(cmd.defines, "\x1F"),
+                suco::join(cmd.include_paths, "\x1F"), suco::join(cmd.other_flags, "\x1F")
+            };
+            if (suco::header_bundle::enable_remote_preprocess(item.cmd, v3key, context_)) {
+                v3 = true;
+                item.preprocess_success = true;
+                SUCO_LOG_INFO("[RPP] {} — skipping local -E (remote preprocessing)", cmd.source_file);
+            }
+        }
+
+        if (!v3) {
         auto start_time = std::chrono::steady_clock::now();
-        
+
         std::vector<std::string> pp_args;
         pp_args.push_back(cmd.compiler_path);
         if (cmd.is_msvc) {
@@ -462,12 +482,6 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                 item.cmd.content_hash = suco::compute_cache_hash(*key_input, key, context_);
                 pt2 = std::chrono::steady_clock::now();
                 if (!item.cmd.content_hash.empty()) {
-                    // #42: opt-in remote preprocessing. If a header bundle builds, ship
-                    // RAW source + bundle (V3, worker preprocesses) and skip the
-                    // preprocessed-source / header-cache setup below.
-                    const bool rpp = config_.remote_preprocess_enabled &&
-                        suco::header_bundle::enable_remote_preprocess(item.cmd, key, context_);
-                    if (!rpp) {
                     item.cmd.preprocessed_source = pp_output;
                     // E3: header-set/PCH caching and C++20 modules are mutually exclusive.
                     // Under -fmodules-ts, GCC compiles `-x c++-header` into a header *unit*
@@ -497,7 +511,6 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                             item.cmd.header_set_hash, item.cmd.header_set_source, context_
                         );
                     }
-                    } // end if(!rpp) — remote-preprocess TUs skip preprocessed-source setup
                     pt4 = std::chrono::steady_clock::now();
                     if (phase_timing) {
                         auto ms = [](auto a, auto b) {
@@ -529,7 +542,8 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                              cmd.source_file, pp_exit, duration_ms, why);
             item.preprocess_output = std::move(pp_output);
         }
-        
+        } // #42: end if(!v3) — remote-preprocess TUs skipped the local -E entirely
+
         // --- COORDINATOR CACHE LOOKUP ---
         // Worker assigned by the coordinator on a cache miss. Captured here so the
         // grid-dispatch branch below can talk to that worker directly.
