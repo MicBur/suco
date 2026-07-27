@@ -43,6 +43,24 @@ normalisation the existing preprocessed grid path already performs (via
 `-ffile-prefix-map`), so a V3 object is as relocatable and deterministic as any grid
 object today — it is not a miscompile.
 
+## 2b. Windows→Linux cross-compile — V3 is a byte-identical drop-in for the grid
+
+Sweeping the MinGW cross-target (`x86_64-w64-mingw32-g++`, `pe-x86-64` objects) initially
+showed V3 differing from a plain native cross-compile. Investigation found **two separate
+things**:
+
+1. **A real V3 bug (fixed):** the V3 base command used `cmd.compiler_path` (the LOCAL
+   compiler) instead of the resolved `cmd.get_remote_compiler_name()`, so a MinGW target
+   was compiled with the local `g++` — wrong architecture. Fixed to match the normal path.
+2. **A pre-existing grid property (not V3):** even the NORMAL grid cross-compile object
+   differs from a plain-native one (e.g. 3064 vs 1450 bytes for a trivial TU). This is a
+   property of the existing grid cross path, independent of remote preprocessing.
+
+After the fix, **V3 == the normal grid cross-compile path, byte-for-byte** (`SAME-DROPIN`).
+So switching the default to V3 changes nothing for grid cross-compile users — the correct
+drop-in criterion. (The separate grid-vs-native cross-compile size gap is worth its own
+look but is out of scope for #42.)
+
 ## 3. Determinism (the cache invariant)
 
 V3 objects are deterministic across workers/runs (different workspace temp dirs):

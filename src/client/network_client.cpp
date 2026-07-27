@@ -1437,7 +1437,11 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
     // Base command carries the compiler + defines + other flags + std ONLY — no
     // -fdirectives-only and no -I (the worker adds -x c++, remapped -I, -c/-o).
     if (cmd.use_remote_preprocess) {
-        std::string base_cmd = cmd.compiler_path;
+        // Use the RESOLVED remote/dispatch compiler (target-qualified for MinGW
+        // cross-targets), exactly as the normal path's remote_cmd does — NOT
+        // cmd.compiler_path, which is the LOCAL compiler and would cross-compile
+        // to the wrong architecture.
+        std::string base_cmd = cmd.get_remote_compiler_name();
         for (const auto& d : cmd.defines) base_cmd += " " + d;
         for (const auto& f : cmd.other_flags) base_cmd += " " + f;
         if (!cmd.language_standard.empty()) base_cmd += " " + cmd.language_standard;
