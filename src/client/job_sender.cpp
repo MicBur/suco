@@ -106,42 +106,11 @@ int JobSender::process_job_pipeline(JobItem& item, NetworkClient& network) {
         return run_local_fallback(cmd);
     }
 
-    // #42: remote preprocessing (opt-in). Build a project-header bundle and, if it
-    // succeeds, switch this TU to the V3 path: ship RAW source + bundle and let the
-    // worker preprocess. content_hash becomes a V3-specific key (raw source + bundle
-    // hash, folded through the SAME CacheKeyInput so toolchain identity still counts),
-    // which lives in its own cache namespace so V3 and preprocessed objects never
-    // collide. Any failure leaves the normal (preprocessed) path untouched.
-    if (config_.remote_preprocess_enabled && !cmd.is_msvc) {
-        std::error_code ec;
-        std::string abs_root = suco::detect_checkout_root(".", context_);
-        if (!abs_root.empty()) {
-            std::string c = std::filesystem::weakly_canonical(abs_root, ec).string();
-            if (!ec) abs_root = c;
-            ec.clear();
-            auto bundle = suco::header_bundle::build_header_bundle(cmd, abs_root);
-            std::ifstream sf(cmd.source_file, std::ios::binary);
-            if (bundle.ok && sf) {
-                std::ostringstream ss; ss << sf.rdbuf();
-                std::string raw = ss.str();
-                std::string v3_hash = suco::compute_cache_hash(raw + "\x1E" + bundle.hash, key, context_);
-                if (!v3_hash.empty()) {
-                    cmd.rpp_raw_source = std::move(raw);
-                    cmd.rpp_bundle_archive = bundle.archive_zstd;   // compressed for the wire
-                    cmd.rpp_project_root = abs_root;
-                    for (const auto& inc : cmd.include_paths) {
-                        std::string p = (inc.rfind("-I", 0) == 0) ? inc.substr(2) : inc;
-                        std::string ap = std::filesystem::weakly_canonical(p, ec).string();
-                        if (ec) { ec.clear(); ap = std::filesystem::absolute(p, ec).string(); if (ec) { ec.clear(); ap = p; } }
-                        cmd.rpp_include_flags.push_back("-I" + ap);
-                    }
-                    cmd.content_hash = v3_hash;
-                    cmd.use_remote_preprocess = true;
-                    SUCO_LOG_INFO("[RPP] {} -> remote preprocessing ({} project headers, bundle {})",
-                                  cmd.source_file, bundle.paths.size(), bundle.hash.substr(0, 8));
-                }
-            }
-        }
+    // #42: remote preprocessing (opt-in). If a header bundle builds, switch this TU
+    // to the V3 path (ship RAW source + bundle, worker preprocesses). Any failure
+    // leaves the normal preprocessed path untouched.
+    if (config_.remote_preprocess_enabled) {
+        suco::header_bundle::enable_remote_preprocess(cmd, key, context_);
     }
 
     // Compute header set hash and split source

@@ -7,6 +7,7 @@
 #include "local_prep_cache.h"
 #include "hash_util.h"
 #include "header_set_hasher.h"
+#include "header_bundle.h"
 #include "local_compiler.h"
 #include <semaphore>
 #include <filesystem>
@@ -461,6 +462,12 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                 item.cmd.content_hash = suco::compute_cache_hash(*key_input, key, context_);
                 pt2 = std::chrono::steady_clock::now();
                 if (!item.cmd.content_hash.empty()) {
+                    // #42: opt-in remote preprocessing. If a header bundle builds, ship
+                    // RAW source + bundle (V3, worker preprocesses) and skip the
+                    // preprocessed-source / header-cache setup below.
+                    const bool rpp = config_.remote_preprocess_enabled &&
+                        suco::header_bundle::enable_remote_preprocess(item.cmd, key, context_);
+                    if (!rpp) {
                     item.cmd.preprocessed_source = pp_output;
                     // E3: header-set/PCH caching and C++20 modules are mutually exclusive.
                     // Under -fmodules-ts, GCC compiles `-x c++-header` into a header *unit*
@@ -490,6 +497,7 @@ void PipelineOrchestrator::enqueue_job(const CompilerCommand& cmd, ipc_socket_t 
                             item.cmd.header_set_hash, item.cmd.header_set_source, context_
                         );
                     }
+                    } // end if(!rpp) — remote-preprocess TUs skip preprocessed-source setup
                     pt4 = std::chrono::steady_clock::now();
                     if (phase_timing) {
                         auto ms = [](auto a, auto b) {

@@ -145,4 +145,44 @@ BuildResult build_header_bundle(const CompilerCommand& cmd, const std::string& p
     return result;
 }
 
+bool enable_remote_preprocess(CompilerCommand& cmd, const suco::CacheKeyInput& key,
+                              const suco::RequestContext& ctx) {
+    if (cmd.is_msvc || !cmd.module_cmis.empty()) return false;
+
+    std::error_code ec;
+    std::string abs_root = suco::detect_checkout_root(".", ctx);
+    if (abs_root.empty()) return false;
+    std::string c = fs::weakly_canonical(abs_root, ec).string();
+    if (!ec) abs_root = c;
+    ec.clear();
+
+    BuildResult bundle = build_header_bundle(cmd, abs_root);
+    if (!bundle.ok) return false;
+
+    std::ifstream sf(cmd.source_file, std::ios::binary);
+    if (!sf) return false;
+    std::ostringstream ss;
+    ss << sf.rdbuf();
+    std::string raw = ss.str();
+
+    std::string v3_hash = suco::compute_cache_hash(raw + "\x1E" + bundle.hash, key, ctx);
+    if (v3_hash.empty()) return false;
+
+    cmd.rpp_raw_source = std::move(raw);
+    cmd.rpp_bundle_archive = bundle.archive_zstd;  // compressed for the wire
+    cmd.rpp_project_root = abs_root;
+    cmd.rpp_include_flags.clear();
+    for (const auto& inc : cmd.include_paths) {
+        std::string p = (inc.rfind("-I", 0) == 0) ? inc.substr(2) : inc;
+        std::string ap = fs::weakly_canonical(p, ec).string();
+        if (ec) { ec.clear(); ap = fs::absolute(p, ec).string(); if (ec) { ec.clear(); ap = p; } }
+        cmd.rpp_include_flags.push_back("-I" + ap);
+    }
+    cmd.content_hash = v3_hash;
+    cmd.use_remote_preprocess = true;
+    SUCO_LOG_INFO("[RPP] {} -> remote preprocessing ({} project headers, bundle {})",
+                  cmd.source_file, bundle.paths.size(), bundle.hash.substr(0, 8));
+    return true;
+}
+
 } // namespace suco::header_bundle
