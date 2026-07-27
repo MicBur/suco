@@ -379,13 +379,19 @@ builds until byte-identity is proven:
   7/7 cache hits, binary runs; no-flag default path unchanged (regression-checked); all 8 CI checks
   green. **#42 correctness is COMPLETE.**
 
-**Remaining for #42 = OPTIMISATION only** (not correctness): the client still runs a redundant local
-`-E` for V3 TUs, so the client-CPU win isn't realised yet. The fix is a hot-path reorder — decide
-V3-eligibility BEFORE `pipeline_orchestrator.cpp:367`'s `-E` and skip it (plan in
-`docs/remote_preprocessing_impl.md` §6). Deserves its own focused change, not an end-of-session
-bolt-on. Also pending: bundle dedup via the blob cache. The opt-in flag stays OFF until the CPU win
-lands + a real-project byte-identity sweep. Other v1.0 items (#44 mTLS, #45 job stealing) are
-Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
+- **#63 (landed) — the client-CPU win.** Eligible V3 TUs now skip the local `-E` entirely: the
+  V3 decision moved BEFORE preprocessing in `pipeline_orchestrator`, so on success the expensive
+  `-E`/normalize/hash block is skipped and the job dispatches straight from raw source + bundle
+  (cheap `-MM`). Correctness guards for the lost `needs_local` net: `enable_remote_preprocess`
+  rejects `__DATE__`/`__TIME__`/`__TIMESTAMP__` + C++20 modules on the RAW source, and
+  `build_header_bundle` flags `has_time_macros` while reading each PROJECT header (the header-
+  introduced case). Rejected → local preprocessing. Verified on node3: skip-`-E` logged, 7/7 V3 +
+  cache hits, and a `__DATE__`-in-header TU correctly falls back. CI runs both flag/no-flag smoke.
+
+**#42 is FEATURE-COMPLETE** (correctness + the CPU win). Remaining before flipping the default OFF→ON:
+bundle dedup via the blob cache (efficiency), and a real-project byte-identity sweep across the
+RocksDB/GoogleTest corpora. Other v1.0 items (#44 mTLS, #45 job stealing) are Linux/grid = Claude;
+#46 macOS blocked on a build host. #43 sandbox = DONE (below).
 
 **#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
 worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs

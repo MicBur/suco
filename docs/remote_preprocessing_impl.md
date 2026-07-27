@@ -5,13 +5,16 @@ This file is the **executable plan**: the exact wire framing, worker command
 reconstruction, and the byte-identity procedure that gates default-on. It is
 grounded in the current code, so the remaining wire slice is a small, verifiable diff.
 
-## Status — WIRE COMPLETE (correctness), opt-in (2026-07-27)
+## Status — FEATURE COMPLETE, opt-in (2026-07-27)
 
-The end-to-end path is landed and grid-verified (#59): `SUCO_REMOTE_PREPROCESS=1` →
-client ships RAW source + bundle → worker preprocesses (`Compiling direct RPP job`) →
-byte-identical, deterministic objects (7/7 cache hits), binary runs; no-flag default
-unchanged. Remaining work is OPTIMISATION only (§6): the client still runs a redundant
-local `-E` for V3 TUs, so the client-CPU win isn't realised yet.
+Landed + grid-verified + CI-enforced. `SUCO_REMOTE_PREPROCESS=1` → client builds the
+bundle (cheap `-MM`), **skips the local `-E`** (#63 — the client-CPU win), ships RAW
+source + bundle → worker preprocesses (`Compiling direct RPP job`) → byte-identical,
+deterministic objects (7/7 cache hits), binary runs; no-flag default unchanged.
+Correctness guards: `__DATE__`/`__TIME__`/`__TIMESTAMP__` (raw source AND project
+headers) and C++20 modules fall back to local preprocessing. Remaining before flipping
+the default: bundle dedup via the blob cache (efficiency) + a real-project byte-identity
+sweep across the RocksDB/GoogleTest corpora.
 
 ## Status (history)
 
