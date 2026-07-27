@@ -93,6 +93,8 @@ Empirical benchmark comparison conducted on **2026-07-26T10:26:00Z** on Windows 
 | **Task 12**| Create & publish 8-page GitHub Wiki system (`wiki/`) & deployment script (`scripts/deploy_github_wiki.ps1`) | ✅ **COMPLETED** | Published live at [github.com/MicBur/suco/wiki](https://github.com/MicBur/suco/wiki) |
 | **Task 13**| Automated GPG-Signed APT Repository (`release-apt.yml`, GPG Key pair on `k3master`, `suco-archive-keyring.asc`, Base64 Secret) | ✅ **COMPLETED** | Published & verified 100% green on GitHub Pages (`https://micbur.github.io/suco`) |
 | **Task 14**| Verify V3 Remote Preprocessing on REAL Windows→Linux Cross-Compile (PE/COFF) | ✅ **COMPLETED** | [v3_windows_cross_compile_walkthrough.md](file:///C:/Users/micbu/.gemini/antigravity/brain/78f483fb-6e37-4d39-b476-c00b6a7d43de/v3_windows_cross_compile_walkthrough.md) (commented on Issue #42) |
+| **Task 15**| Verify VS Code Extension TypeScript compilation (`extension/vscode/`) | ✅ **COMPLETED** | `npm run compile` passed with 0 TypeScript errors |
+| **Task 16**| Audit & bundle standalone runtime DLLs into `build/` for `WIN-DEV` worker (`suco-worker.exe`) | ✅ **COMPLETED** | Bundled `libssl-1_1-x64.dll`, `libcrypto-1_1-x64.dll`, `libstdc++-6.dll`, `Qt6*.dll` into `build/` |
 
 ---
 
