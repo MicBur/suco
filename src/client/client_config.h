@@ -32,7 +32,7 @@ struct ClientConfig {
     bool path_normalization = true;
     // v1.0.0 #42: opt-in remote preprocessing (ship raw source + header bundle,
     // worker runs -E). Off until the wire path lands and byte-identity is proven.
-    bool remote_preprocess_enabled = false;
+    bool remote_preprocess_enabled = true;
 
     /**
      * @brief Loads configuration from environment variables or returns defaults.
