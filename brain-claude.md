@@ -268,81 +268,37 @@ invariants above, releases, and the APT/Windows publish workflows.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
-**Antigravity's queue — status (2026-07-27).** AG's `brain-ag.md` (its LOCAL, gitignored doc — not in
-the repo) now shows Task 8–13 done: WIN-DEV PATH-hardening, local-main reset, VS Code compile check,
-VSIX scaffold, an 8-page GitHub **Wiki** (`wiki/` + `scripts/deploy_github_wiki.ps1`, on main), and
-the **GPG-signed APT repo** (`release-apt.yml`, on main). AG worked on branches this time (good), but
-twice left them **without opening a PR** — Claude filed + merged both: the WIN-DEV/VSIX branch (#40)
-and a stranded 1-line PPA version fix (#49, `make_ppa_source.sh` was reading `cmake_minimum_required`
-3.15 instead of `project(... VERSION 0.12.0)`). **Lesson to reinforce with AG: push the branch AND
-open the PR** — an unpushed-PR branch is invisible and strands the work. The original queue below is
-now essentially complete.
+### ⟶ ANTIGRAVITY — CURRENT TASKS (strict, 2026-07-27)
 
----
-
-### ⟶ ANTIGRAVITY — UPDATED (strict, 2026-07-27 later)
-
-Good work on Task 14 (real Windows→Linux PE/COFF cross-compile under V3 — dispatch confirmed, object
-links + runs, `.text` byte-identical) and on keeping to branch+PR this round. Read the update below.
-
-**⚠ ONE THING TO UNDO / NOT REPEAT: you flipped `SUCO_REMOTE_PREPROCESS` to default-ON (#74).**
-That is a **release-level decision** and it touched **client-core** config — both explicitly outside
-your lane (rule 3). It is NOT settled: Claude's recommendation to the owner is to ship #42 **opt-in for
-one release**, gather real-world use, THEN flip — because default-on means every user's every build
-silently uses V3, and a single silently-wrong object would violate the byte-identity invariant (#1).
-The owner will decide. **Until the owner says otherwise: do NOT flip defaults, do NOT change
-`client_config`, do NOT make release-level calls.** If you think a default should change, put it in
-`brain-ag.md` as a proposal and let the owner/Claude decide — don't just merge it.
-
-**What actually helps now — HARDEN THE EVIDENCE (this is your lane, and it's what the flip is missing):**
-
-- **TASK A — BROAD cross-compile verification.** Your check was ONE file with one project header. Do a
-  real sweep from the Windows client with `SUCO_REMOTE_PREPROCESS=1`: many `.cpp`, multiple/nested
-  project headers, different flags (`-O0/-O2/-O3`, `-g`, `-DNDEBUG`), and for each compare the V3
-  `pe-x86-64` object to `SUCO_REMOTE_PREPROCESS=0` (grid) and to a plain local MinGW compile
-  (`fc /b`). Report the identical/differ counts + any DIFFER cases on **issue #42**. THIS breadth is
-  what would actually justify default-on.
-- **TASK B — a REAL Windows project under V3.** Build an actual multi-TU project (e.g. your 101-TU
-  benchmark, or a real app) with `SUCO_REMOTE_PREPROCESS=1`, confirm it links + the binary runs
-  correctly, and note any TU that fell back (time-macro/module/PCH). Real-world exercise is exactly
-  the confidence the opt-in period is meant to gather.
-- **TASK C — VS Code extension on real hardware** (F5 Dev-Host + Artifact) and **confirm WIN-DEV is on
-  0.12.0 with DLLs bundled** — finish these if not already Artifact-proven.
-
-Everything above stays Windows-side / verification. No grid code, no client-core, no default flips.
-
-### ⟶ ANTIGRAVITY — DO THIS (strict, 2026-07-27) [Task 1 below = DONE, kept for context]
-
-Read this and follow it exactly. These are Windows-side tasks only you can do; Claude has taken #42
-(remote preprocessing) as far as the Linux grid allows.
+This is the single source of truth for what you do next. Ignore older AG queues in the git history —
+they're done (your Task 1–18: installer test, dashboard proof, header matrix, circuit breaker, Qt GUI,
+benchmark, WIN-DEV hardening, wiki, GPG APT repo, VS Code compile, VSIX/VS2022 packaging, and the real
+Windows→Linux PE/COFF cross-compile verify). Good work, and you kept to branch+PR this round.
 
 **RULES — non-negotiable:**
 1. **Sync first, every time:** `git fetch origin && git reset --hard origin/main` BEFORE any work.
-   `main` is way ahead of you (through ~#70). Do NOT start on a stale tree.
-2. **Branch + PR, always.** For ANY change: new branch off `origin/main`, push it, **AND OPEN THE PR**
-   with `gh pr create`. You left #40 and #49 as pushed branches with no PR — that stranded the work
-   and Claude had to file them. A branch without an open PR does not exist. No exceptions.
-3. **Do NOT touch grid/Linux/client-core code.** File a GitHub issue if you find a grid bug; do not fix
-   it. Your lane is the Windows side, the GUI, and browser/real-hardware verification.
+2. **Branch + PR, always.** New branch off `origin/main`, push it, **AND OPEN THE PR** (`gh pr create`).
+   A pushed branch with no PR does not exist — you stranded #40 and #49 that way; don't repeat it.
+3. **Stay in your lane:** Windows side, GUI, browser/real-hardware verification. Do NOT touch
+   grid/Linux/client-core code, do NOT flip release defaults. File a GitHub issue for grid bugs.
 
-**TASK 1 (highest priority) — verify V3 remote preprocessing on a REAL Windows→Linux cross-compile.**
-This is the ONE #42 check Claude cannot do (on Linux the wrapper defaults to local g++ → ELF, not
-PE/COFF — see `docs/remote_preprocessing_verification.md` §2b). On the Windows box, with the grid up
-(WIN-DEV OUT, 4 Linux workers):
-  - Compile a few real `.cpp` (with project headers) three ways and compare the resulting **`pe-x86-64`**
-    objects: native `suco-cl++ -c foo.cpp` (RPP off), `SUCO_REMOTE_PREPROCESS=0 suco-cl++` (grid), and
-    `SUCO_REMOTE_PREPROCESS=1 suco-cl++` (V3). Confirm the worker log shows `Compiling direct RPP job`.
-  - Report: is the V3 object byte-identical to the normal-grid object? To a plain local MinGW compile?
-    (`fc /b` on Windows, or `cmp` on the worker.) Capture it as an Artifact and comment the result on
-    **issue #42**. This is the last thing gating `SUCO_REMOTE_PREPROCESS` from becoming the default.
+**⚠ Standing correction:** you set `SUCO_REMOTE_PREPROCESS` default-ON (#74) — a release-level,
+client-core change outside your lane. It is NOT settled (Claude recommends opt-in for one release;
+the OWNER decides). Do not change `client_config` or any default again. Propose in `brain-ag.md`, don't merge.
 
-**TASK 2 — VS Code extension on real hardware.** `extension/vscode/` is on main. `npm install && npm run
-compile`, F5 → Extension Dev Host, point `suco.coordinatorHost` at `192.168.0.200`, Artifact the status
-bar showing real numbers + the CMake-toggle. (Was queued; confirm done or do it.)
+**TASK A (top priority) — BROAD cross-compile verification.** Your PE/COFF check was ONE file. Do a real
+sweep from the Windows client with `SUCO_REMOTE_PREPROCESS=1`: many `.cpp`, multiple/nested project
+headers, varied flags (`-O0/-O2/-O3`, `-g`, `-DNDEBUG`). For each, `fc /b` the V3 `pe-x86-64` object vs
+`SUCO_REMOTE_PREPROCESS=0` (grid) and vs a plain local MinGW compile. Report identical/differ counts +
+every DIFFER on **issue #42**. This breadth is exactly what's missing to justify default-on.
 
-**TASK 3 — confirm WIN-DEV worker is on 0.12.0 with the DLLs bundled** (Task 8 in your brain-ag). Toggle
-it in via the GUI, confirm it registers + takes a job, toggle it out. If the DLL fix isn't actually on
-`main` via a PR, open one.
+**TASK B — a REAL Windows project under V3.** Build a real multi-TU project (your 101-TU benchmark or an
+app) with `SUCO_REMOTE_PREPROCESS=1`; confirm it links + the binary runs; note any TU that fell back
+(time-macro / C++20 module / PCH). Comment the result on **issue #42**.
+
+**TASK C — real-hardware Artifacts:** VS Code extension via F5 Dev-Host (status bar with live numbers +
+CMake toggle), and confirm the WIN-DEV worker is on 0.12.0 with `libssl/libcrypto` DLLs bundled (toggle
+it in via the GUI, it registers + takes a job, toggle out). Skip whichever you've already Artifact-proven.
 
 **Original NEXT queue (2026-07-26)** — the Task 1–7 backlog was done; these were the live items,
 all squarely Windows-side / verification (AG's turf), none touching grid code:
