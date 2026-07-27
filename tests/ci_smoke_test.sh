@@ -218,6 +218,21 @@ echo "=== Services still alive? ==="
 kill -0 "$COORD_PID" || { echo "FAIL: coordinator crashed during test"; exit 1; }
 kill -0 "$WORKER_PID" || { echo "FAIL: worker crashed during test"; exit 1; }
 
+# #42: when remote preprocessing is requested, assert the worker actually took the
+# V3 path (logs "Compiling direct RPP job") — otherwise a silent fallback to the
+# preprocessed path would let a broken V3 pass every check above. The 7/7 cache
+# hits already proved the V3 objects are deterministic; this proves they are V3's.
+if [ "${SUCO_REMOTE_PREPROCESS:-0}" = "1" ]; then
+    RPP="$(grep -c -i "direct RPP job" "$WORK_DIR/worker.log" || true)"
+    echo "Remote-preprocess (V3) jobs on the worker: $RPP / 7"
+    if [ "$RPP" -lt 1 ]; then
+        echo "FAIL: SUCO_REMOTE_PREPROCESS=1 but the worker ran NO remote-preprocess jobs —"
+        echo "      the client silently fell back to the preprocessed path."
+        tail -40 "$WORK_DIR/worker.log"
+        exit 1
+    fi
+fi
+
 echo "============================================="
 echo "SMOKE TEST PASSED (objects OK, binary OK, $HITS cache hits, no crashes)"
 echo "============================================="
