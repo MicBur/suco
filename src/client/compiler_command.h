@@ -47,6 +47,17 @@ struct CompilerCommand {
     // Pairs of (module name, raw .gcm bytes). Their contents feed the cache key.
     std::vector<std::pair<std::string, std::string>> module_cmis;
 
+    // v1.0.0 #42: remote preprocessing. When set (opt-in SUCO_REMOTE_PREPROCESS, and
+    // only if a header bundle was built successfully), the job ships RAW source + a
+    // project-header bundle and the WORKER preprocesses, instead of shipping locally
+    // preprocessed source. content_hash is a V3-specific key so these objects live in
+    // their own cache namespace. Off => the fields are empty and the normal path runs.
+    bool use_remote_preprocess = false;
+    std::string rpp_raw_source;          // raw source bytes
+    std::string rpp_bundle_archive;      // header_bundle::pack() output (UNCOMPRESSED)
+    std::string rpp_project_root;        // absolute, normalised
+    std::vector<std::string> rpp_include_flags;  // absolute -I<path> flags
+
     /**
      * @brief Parses command line arguments to build a CompilerCommand.
      * @param argc Argument count.

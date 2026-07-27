@@ -1433,6 +1433,52 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
                       cmd.header_set_hash.substr(0, 8), cmd.header_set_source.size(),
                       cmd.preprocessed_source.substr(0, cmd.preprocessed_source.find('\n')));
     }
+    // #42 V3: ship RAW source + a project-header bundle; the worker preprocesses.
+    // Base command carries the compiler + defines + other flags + std ONLY — no
+    // -fdirectives-only and no -I (the worker adds -x c++, remapped -I, -c/-o).
+    if (cmd.use_remote_preprocess) {
+        std::string base_cmd = cmd.compiler_path;
+        for (const auto& d : cmd.defines) base_cmd += " " + d;
+        for (const auto& f : cmd.other_flags) base_cmd += " " + f;
+        if (!cmd.language_standard.empty()) base_cmd += " " + cmd.language_standard;
+
+        std::string csrc; uint8_t scomp = 0;
+        uint32_t slen = static_cast<uint32_t>(cmd.rpp_raw_source.size());
+        const char* sdata = cmd.rpp_raw_source.data();
+        if (config_.compression_enabled && cmd.rpp_raw_source.size() >= 4096) {
+            csrc = suco::compress_zstd(cmd.rpp_raw_source, config_.compression_level);
+            if (!csrc.empty() && csrc.size() < cmd.rpp_raw_source.size()) { scomp = 1; slen = csrc.size(); sdata = csrc.data(); }
+        }
+        uint32_t rt = htonl(suco::PACKET_DIRECT_COMPILE_REQ_V3);
+        uint32_t cl = htonl(static_cast<uint32_t>(base_cmd.size()));
+        uint32_t fl = htonl(static_cast<uint32_t>(cmd.source_file.size()));
+        uint32_t pl = htonl(static_cast<uint32_t>(cmd.rpp_project_root.size()));
+        uint32_t ic = htonl(static_cast<uint32_t>(cmd.rpp_include_flags.size()));
+        uint32_t sl = htonl(slen);
+        uint32_t tl = htonl(static_cast<uint32_t>(cmd.toolchain_hash.size()));
+        uint8_t bcomp = 1; // rpp_bundle_archive is already zstd-compressed
+        uint32_t bl = htonl(static_cast<uint32_t>(cmd.rpp_bundle_archive.size()));
+
+        bool ok = suco::send_all(sock_, &rt, 4) &&
+                  suco::send_all(sock_, &cl, 4) && suco::send_all(sock_, base_cmd.data(), base_cmd.size()) &&
+                  suco::send_all(sock_, &fl, 4) && suco::send_all(sock_, cmd.source_file.data(), cmd.source_file.size()) &&
+                  suco::send_all(sock_, &pl, 4) && (cmd.rpp_project_root.empty() || suco::send_all(sock_, cmd.rpp_project_root.data(), cmd.rpp_project_root.size())) &&
+                  suco::send_all(sock_, &ic, 4);
+        for (const auto& inc : cmd.rpp_include_flags) {
+            uint32_t il = htonl(static_cast<uint32_t>(inc.size()));
+            ok = ok && suco::send_all(sock_, &il, 4) && suco::send_all(sock_, inc.data(), inc.size());
+        }
+        ok = ok && suco::send_all(sock_, &scomp, 1) && suco::send_all(sock_, &sl, 4) && (slen == 0 || suco::send_all(sock_, sdata, slen)) &&
+             suco::send_all(sock_, &tl, 4) && (cmd.toolchain_hash.empty() || suco::send_all(sock_, cmd.toolchain_hash.data(), cmd.toolchain_hash.size())) &&
+             suco::send_all(sock_, &bcomp, 1) && suco::send_all(sock_, &bl, 4) && (cmd.rpp_bundle_archive.empty() || suco::send_all(sock_, cmd.rpp_bundle_archive.data(), cmd.rpp_bundle_archive.size()));
+        if (!ok) {
+            SUCO_LOG_ERROR("Failed to transmit remote-preprocess (V3) payload to worker");
+            disconnect();
+            return CompileResult{ .success = false };
+        }
+        // fall through to the shared response-read + cache-store tail below.
+    } else {
+
     const bool has_cmis = !cmd.module_cmis.empty();
     uint32_t req_type = htonl(has_cmis ? suco::PACKET_DIRECT_COMPILE_REQ_V2
                                        : suco::PACKET_DIRECT_COMPILE_REQ);
@@ -1468,6 +1514,7 @@ CompileResult NetworkClient::try_compile_direct(const CompilerCommand& cmd, cons
         disconnect();
         return CompileResult{ .success = false };
     }
+    } // end else (non-V3 send path)
 
     // 4. Antwort vom Worker lesen.
     // The worker replies via handle_compile_job, whose frame carries a leading

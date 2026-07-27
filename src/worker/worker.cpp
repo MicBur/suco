@@ -783,6 +783,73 @@ void Worker::handle_compile_job(const std::string& command,
     }
 }
 
+void Worker::handle_remote_preprocess_job(const std::string& command,
+                                          const std::string& filename,
+                                          const std::string& source,
+                                          const std::string& project_root,
+                                          const std::vector<std::string>& include_flags,
+                                          const std::string& bundle_archive,
+                                          const std::string& toolchain_hash,
+                                          int client_sock) {
+    JobExecutor::RemoteJob job;
+    job.command = command;
+    job.filename = filename;
+    job.source = source;
+    job.project_root = project_root;
+    job.include_flags = include_flags;
+    job.bundle_archive = bundle_archive;
+    job.toolchain_hash = toolchain_hash;
+    auto job_result = JobExecutor::execute_remote_preprocess(job, m_config.job_timeout);
+
+    m_slots_used = std::max(0, m_slots_used.load() - 1);
+    if (m_shutdown_requested) {
+        if (client_sock != -1) close_socket(client_sock);
+        return;
+    }
+
+    bool comp_enabled = true;
+    const char* comp_env = std::getenv("SUCO_COMPRESSION");
+    if (comp_env) {
+        std::string s_comp(comp_env);
+        comp_enabled = (s_comp != "off" && s_comp != "OFF" && s_comp != "false" && s_comp != "0");
+    }
+    uint8_t bin_comp = 0;
+    uint32_t bin_len = job_result.binary.size();
+    const void* bin_data = job_result.binary.data();
+    std::string compressed_bin;
+    if (comp_enabled && job_result.binary.size() >= 4096) {
+        std::string bin_str(reinterpret_cast<const char*>(job_result.binary.data()), job_result.binary.size());
+        compressed_bin = suco::compress_zstd(bin_str, 1);
+        if (!compressed_bin.empty() && compressed_bin.size() < job_result.binary.size()) {
+            bin_comp = 1; bin_len = compressed_bin.size(); bin_data = compressed_bin.data();
+        }
+    }
+    uint32_t resp_type_net = htonl(suco::PACKET_COMPILE_RESP);
+    uint32_t f_len_net = htonl(static_cast<uint32_t>(filename.size()));
+    int32_t exit_code_net = htonl(job_result.exit_code);
+    uint32_t log_len_net = htonl(static_cast<uint32_t>(job_result.log.size()));
+    uint32_t bin_len_net = htonl(bin_len);
+    uint32_t hc_hit_net = htonl(0);
+    if (client_sock != -1) {
+        if (send_all(client_sock, &resp_type_net, 4) &&
+            send_all(client_sock, &f_len_net, 4) &&
+            send_all(client_sock, filename.c_str(), filename.size()) &&
+            send_all(client_sock, &exit_code_net, 4) &&
+            send_all(client_sock, &log_len_net, 4)) {
+            if (!job_result.log.empty()) send_all(client_sock, job_result.log.c_str(), job_result.log.size());
+            send_all(client_sock, &bin_comp, 1);
+            send_all(client_sock, &bin_len_net, 4);
+            if (bin_len > 0) send_all(client_sock, bin_data, bin_len);
+            send_all(client_sock, &hc_hit_net, 4);
+        }
+        close_socket(client_sock);
+    }
+    SUCO_LOG_INFO("Finished RPP job {} (Exit: {})", filename, job_result.exit_code);
+    if (job_result.exit_code != 0 && !job_result.log.empty()) {
+        SUCO_LOG_WARNING("RPP job {} failed on this worker:\n{}", filename, job_result.log);
+    }
+}
+
 void Worker::run_direct_listener_loop() {
     SUCO_LOG_INFO("Worker: Direct compile listener loop started.");
     while (!m_shutdown_requested) {
@@ -838,6 +905,44 @@ void Worker::run_direct_listener_loop() {
                 close_socket(client_sock);
                 return;
             }
+
+            // #42 V3: remote-preprocess job (RAW source + project-header bundle).
+            if (req_type == suco::PACKET_DIRECT_COMPILE_REQ_V3) {
+                auto rd_u32 = [&](uint32_t& v) -> bool { uint32_t n; if (!read_all(client_sock, &n, 4)) return false; v = ntohl(n); return true; };
+                auto rd_str = [&](std::string& s, uint32_t cap) -> bool {
+                    uint32_t len; if (!rd_u32(len)) return false; if (len > cap) return false;
+                    std::vector<char> b(len); if (len && !read_all(client_sock, b.data(), len)) return false;
+                    s.assign(b.data(), len); return true;
+                };
+                std::string command, filename, project_root, toolchain_hash;
+                if (!rd_str(command, 1u << 20)) { close_socket(client_sock); return; }
+                if (!rd_str(filename, 65536)) { close_socket(client_sock); return; }
+                if (!rd_str(project_root, 65536)) { close_socket(client_sock); return; }
+                uint32_t inc_count = 0;
+                if (!rd_u32(inc_count) || inc_count > 65536) { close_socket(client_sock); return; }
+                std::vector<std::string> include_flags;
+                include_flags.reserve(inc_count);
+                for (uint32_t i = 0; i < inc_count; ++i) { std::string s; if (!rd_str(s, 65536)) { close_socket(client_sock); return; } include_flags.push_back(std::move(s)); }
+                uint8_t scomp = 0; if (!read_all(client_sock, &scomp, 1)) { close_socket(client_sock); return; }
+                std::string source; if (!rd_str(source, 1u << 30)) { close_socket(client_sock); return; }
+                if (scomp == 1) source = suco::decompress_zstd(source);
+                if (!rd_str(toolchain_hash, 65536)) { close_socket(client_sock); return; }
+                uint8_t bcomp = 0; if (!read_all(client_sock, &bcomp, 1)) { close_socket(client_sock); return; }
+                std::string bundle; if (!rd_str(bundle, 1u << 30)) { close_socket(client_sock); return; }
+                if (bcomp == 1) bundle = suco::decompress_zstd(bundle);
+
+                SUCO_LOG_INFO("Compiling direct RPP job {}...", filename);
+                m_slots_used++;
+                { std::lock_guard<std::mutex> lock(m_jobs_mutex); m_active_jobs_count++; }
+                std::thread([this, command, filename, source, project_root, include_flags, bundle, toolchain_hash, client_sock]() {
+                    this->handle_remote_preprocess_job(command, filename, source, project_root, include_flags, bundle, toolchain_hash, client_sock);
+                    std::lock_guard<std::mutex> lock(m_jobs_mutex);
+                    m_active_jobs_count--;
+                    if (m_active_jobs_count == 0) m_jobs_cv.notify_all();
+                }).detach();
+                return;
+            }
+
             const bool expect_cmis = (req_type == suco::PACKET_DIRECT_COMPILE_REQ_V2);
             if (req_type != suco::PACKET_DIRECT_COMPILE_REQ && !expect_cmis) {
                 SUCO_LOG_ERROR("Worker Direct Listener: Unexpected packet type {}", req_type);

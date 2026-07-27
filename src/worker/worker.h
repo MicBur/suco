@@ -78,6 +78,18 @@ private:
                             int client_sock = -1,
                             const std::vector<std::pair<std::string, std::string>>& module_cmis = {});
 
+    // #42: handle a V3 (remote-preprocess) direct job — compile RAW source + a
+    // shipped project-header bundle via JobExecutor::execute_remote_preprocess, then
+    // reply with the same PACKET_COMPILE_RESP frame as handle_compile_job.
+    void handle_remote_preprocess_job(const std::string& command,
+                                      const std::string& filename,
+                                      const std::string& source,
+                                      const std::string& project_root,
+                                      const std::vector<std::string>& include_flags,
+                                      const std::string& bundle_archive,
+                                      const std::string& toolchain_hash,
+                                      int client_sock);
+
     void run_direct_listener_loop();
 
     Config m_config;

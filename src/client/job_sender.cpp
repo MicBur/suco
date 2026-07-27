@@ -5,8 +5,12 @@
 #include "local_compiler.h"
 #include "utils.h"
 #include "header_set_hasher.h"
+#include "header_bundle.h"
 #include <iostream>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace {
 std::mutex g_output_mutex;
@@ -100,6 +104,13 @@ int JobSender::process_job_pipeline(JobItem& item, NetworkClient& network) {
     if (cmd.content_hash.empty()) {
         SUCO_LOG_ERROR("Failed to compute cache hash for {}. Falling back to local compilation.", cmd.source_file);
         return run_local_fallback(cmd);
+    }
+
+    // #42: remote preprocessing (opt-in). If a header bundle builds, switch this TU
+    // to the V3 path (ship RAW source + bundle, worker preprocesses). Any failure
+    // leaves the normal preprocessed path untouched.
+    if (config_.remote_preprocess_enabled) {
+        suco::header_bundle::enable_remote_preprocess(cmd, key, context_);
     }
 
     // Compute header set hash and split source

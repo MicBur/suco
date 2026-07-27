@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+#include "../common/hash_util.h"  // suco::CacheKeyInput, suco::RequestContext
+
 struct CompilerCommand;
 
 namespace suco::header_bundle {
@@ -34,5 +36,14 @@ struct BuildResult {
 // own toolchain. Returns ok=false on any scan/read failure so the caller can fall
 // back — this function never throws for an expected I/O or tooling error.
 BuildResult build_header_bundle(const CompilerCommand& cmd, const std::string& project_root);
+
+// Switch `cmd` to the remote-preprocess (V3) path if possible: detect the project
+// root, build the header bundle, read the raw source, populate cmd.rpp_* and set
+// `use_remote_preprocess`, and override cmd.content_hash with a V3 key derived from
+// {raw source + bundle hash} through `key` (so toolchain identity still counts and
+// V3 objects get their own cache namespace). Returns true if switched; false leaves
+// `cmd` on the normal preprocessed path. Shared by every client dispatch pipeline.
+bool enable_remote_preprocess(CompilerCommand& cmd, const suco::CacheKeyInput& key,
+                              const suco::RequestContext& ctx);
 
 } // namespace suco::header_bundle
