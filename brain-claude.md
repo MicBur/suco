@@ -388,10 +388,16 @@ builds until byte-identity is proven:
   introduced case). Rejected → local preprocessing. Verified on node3: skip-`-E` logged, 7/7 V3 +
   cache hits, and a `__DATE__`-in-header TU correctly falls back. CI runs both flag/no-flag smoke.
 
-**#42 is FEATURE-COMPLETE** (correctness + the CPU win). Remaining before flipping the default OFF→ON:
-bundle dedup via the blob cache (efficiency), and a real-project byte-identity sweep across the
-RocksDB/GoogleTest corpora. Other v1.0 items (#44 mTLS, #45 job stealing) are Linux/grid = Claude;
-#46 macOS blocked on a build host. #43 sandbox = DONE (below).
+**#42 is FEATURE-COMPLETE** (correctness + the CPU win) and **byte-identity-VERIFIED** (#65,
+`docs/remote_preprocessing_verification.md`): synthetic header-heavy corpus **240/240 byte-identical
+to native** across -O0/-O2/-O3; real **fmt** (+gtest) **`.text` byte-identical**, delta only
+relocatable paths (matches the existing grid's normalisation). The sweep also caught + fixed a real
+V3 **cross-compile** bug (#66): base_cmd used `compiler_path` (local) not `get_remote_compiler_name()`
+→ MinGW target built with local g++; fixed, and V3 now == the normal-grid cross object byte-for-byte
+(drop-in). Filed #67 for a PRE-EXISTING oddity the sweep surfaced: grid cross-compile objects are
+bigger than plain-native (affects the normal path too, not V3). Remaining before default OFF→ON:
+bundle dedup via the blob cache (efficiency). Other v1.0 items (#44 mTLS, #45 job stealing) are
+Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
 
 **#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
 worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs
