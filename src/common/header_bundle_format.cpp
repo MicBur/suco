@@ -112,8 +112,18 @@ namespace {
 
 // True if `rel` is a safe, in-tree relative path: not absolute, no ".." or root
 // component that would let it escape the workspace. Lexical only.
+// A bundle entry path is only safe if it can never resolve outside the destination.
+// `is_absolute()` alone is NOT enough on Windows: "C:foo.h" is drive-RELATIVE, so
+// is_absolute() is false — yet `dest / "C:foo.h"` yields "C:foo.h" (std::filesystem
+// replaces the whole path when the right-hand side carries a different root name),
+// writing outside the job dir. Reject any root name or root directory as well, which
+// matches the check the worker already applies to client-supplied names
+// (job_executor.cpp job_source_name). Lexical only — no disk access.
 bool is_safe_relative(const fs::path& rel) {
+    if (rel.empty()) return false;
     if (rel.is_absolute()) return false;
+    if (rel.has_root_name()) return false;       // "C:foo" (drive-relative) / "//server"
+    if (rel.has_root_directory()) return false;  // "/foo", "\foo"
     for (const auto& part : rel) {
         if (part == "..") return false;
     }
@@ -132,6 +142,12 @@ bool materialize(const std::string& archive, const std::string& dest_dir) {
     if (ec) return false;
 
     for (const auto& f : files) {
+        // The format is documented as '/'-separated; enforce it rather than trust it.
+        // A backslash means different things per platform (separator on Windows, an
+        // ordinary filename character on POSIX), so an entry like "..\\..\\evil.h"
+        // would be caught on one and not the other. Rejecting them outright keeps the
+        // guard's behaviour identical everywhere. pack() only ever emits '/'.
+        if (f.path.find('\\') != std::string::npos) return false;
         fs::path rel = fs::path(f.path).lexically_normal();
         if (!is_safe_relative(rel)) return false; // zip-slip guard
         fs::path out_path = base / rel;

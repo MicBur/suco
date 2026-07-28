@@ -101,6 +101,36 @@ int main() {
 
         std::vector<File> evil = {{"../escape.h", "PWNED"}};
         CHECK(!materialize(pack(evil), (ws / "guard").string()), "zip-slip path accepted");
+
+        // Path-escape vectors that must be rejected on EVERY platform. The Windows
+        // ones are the subtle part: "C:foo.h" is drive-RELATIVE so is_absolute() is
+        // false, yet `dest / "C:foo.h"` resolves to "C:foo.h" (std::filesystem drops
+        // the left side when the right carries a different root name) — i.e. a write
+        // outside the job dir. Backslash entries are rejected outright because the
+        // format is '/'-separated and a backslash parses differently per platform.
+        const char* bad_paths[] = {
+            "C:foo.h",            // Windows drive-relative — NOT is_absolute()
+            "C:/abs/foo.h",       // Windows absolute
+            "C:\\abs\\foo.h",     // Windows absolute, backslashes
+            "\\\\server\\share\\f.h", // UNC root name
+            "/etc/passwd",        // POSIX absolute
+            "\\foo.h",            // root directory (Windows)
+            "..\\..\\evil.h",     // backslash traversal
+            "sub\\..\\..\\evil.h",
+            "",                   // empty
+        };
+        for (const char* bad : bad_paths) {
+            std::vector<File> b = {{bad, "PWNED"}};
+            char msg[160];
+            std::snprintf(msg, sizeof(msg), "unsafe path accepted: \"%s\"", bad);
+            CHECK(!materialize(pack(b), (ws / "guard2").string()), msg);
+        }
+
+        // ...while ordinary nested relative paths still work.
+        std::vector<File> good = {{"a/b/c/ok.h", "OK"}};
+        CHECK(materialize(pack(good), (ws / "good").string()), "safe nested path rejected");
+        CHECK(read(ws / "good/a/b/c/ok.h") == "OK", "safe nested path content wrong");
+
         fs::remove_all(ws);
     }
 
