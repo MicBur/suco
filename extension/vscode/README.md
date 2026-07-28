@@ -14,7 +14,7 @@ Click the status-bar item for the action menu, or run the `SUCO: …` commands f
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `suco.coordinatorHost` | `127.0.0.1` | Coordinator IP/host |
+| `suco.coordinatorHost` | `127.0.0.1` | Coordinator IP/host. Unset → `SUCO_COORDINATOR_HOST` from the environment, then localhost |
 | `suco.coordinatorPort` | `9001` | Coordinator web/API port |
 | `suco.launcher` | `suco-cl++` | Launcher injected into CMake |
 | `suco.pollSeconds` | `5` | Status refresh interval (min 2) |
