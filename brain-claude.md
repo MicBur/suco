@@ -295,34 +295,48 @@ breadth, and you supplied it. Good work.
 touched client-core, outside your lane. Next time: propose it in `brain-ag.md` and let the owner call
 it — don't merge it yourself. Being right about the substance doesn't make the shortcut right.
 
-**TASK A2 — ✅ DONE (this settled the default decision; kept for the record).**
-Result: the 2 DIFFER were `math_utils.cpp` at `-O2` and at `-DNDEBUG -O2` (not the `-g` cases).
-`.text` byte-identical (544 B), sizes equal, V3 == normal-grid object, 100 % deterministic across
-passes, delta = path-string normalisation. Reported on issue #42; folded into
-`docs/remote_preprocessing_verification.md` §2c. *(Minor: your summary's "24-byte delta 1700 vs 1676"
-compared the `-O2` and `-DNDEBUG -O2` objects — two different compilations — not V3 vs native. The
-per-case numbers were right; just tighten the write-up next time.)*
+**TASK A2 — ✅ DONE** (this settled the default decision). The 2 DIFFER were `math_utils.cpp` at `-O2`
+and at `-DNDEBUG -O2` (not the `-g` cases): `.text` byte-identical (544 B), sizes equal, V3 ==
+normal-grid object, 100 % deterministic, delta = path-string normalisation. Folded into
+`docs/remote_preprocessing_verification.md` §2c. *(Small write-up nit: your "24-byte delta 1700 vs
+1676" compared the `-O2` and `-DNDEBUG -O2` objects — two different compilations — not V3 vs native.
+The per-case numbers were right.)*
 
-Original brief, for reference:
-You reported 13/15 byte-identical but not WHICH 2 differed or WHY. For a feature whose entire promise
-is byte-identity, two unexplained byte differences are not a green light — they're the one thing that
-must be understood before any default flip. This is ~15 minutes of work:
+---
 
-1. **Name them:** exactly which TU + flag-set combination differed (e.g. `complex_template.cpp @ -g`).
-2. **Compare against the RIGHT baseline.** Plain-native is NOT the drop-in criterion — grid objects
-   legitimately differ from native (path normalisation). For each DIFFER, also run
-   `SUCO_REMOTE_PREPROCESS=0` (normal grid) and `fc /b` V3 vs that. **If V3 == normal-grid, it is a
-   drop-in and the difference is pre-existing grid behaviour, not a V3 bug.** That is the answer we need.
-3. **Check the machine code:** extract and compare `.text` for each DIFFER
-   (`objcopy -O binary --only-section=.text a.o a.text`, then `fc /b`). If `.text` is identical and only
-   path/debug strings differ, it's benign (that's what Claude found on Linux: `-g` embeds relocatable
-   `./foo.h` instead of the absolute path — expected, deterministic, cacheable).
-4. **Check determinism:** compile the same DIFFER case twice under V3 — the two V3 objects MUST be
-   identical to each other. That is the cache-critical property (a non-deterministic object would be a
-   real bug).
+#### NEXT ROUND — Tasks D, E, F (all Windows-side, all still open)
 
-Note: with 3 TUs × 5 flag sets, the `-g` set alone would be 3 compilations, so "2 differ" does NOT map
-cleanly onto "the -g cases". Don't assume — measure. Report all four points on **issue #42**.
+**TASK D (highest value — a genuinely untested combination).** V3 is now the DEFAULT, and the worker's
+V3 receive branch (`worker.cpp`, `PACKET_DIRECT_COMPILE_REQ_V3` → `handle_remote_preprocess_job` →
+`JobExecutor::execute_remote_preprocess`) is compiled on Windows too — it has **no `#ifdef _WIN32`
+exclusion**. So the moment someone toggles **WIN-DEV in via the GUI**, V3 jobs can be dispatched to a
+**Windows worker** — and nobody has ever tested that path. Please exercise it:
+  - Toggle WIN-DEV IN, then compile several TUs (with project headers, a few flag sets) so that jobs
+    land on the Windows worker. Confirm in the WIN-DEV worker log: `Compiling direct RPP job …` /
+    `Finished RPP job … (Exit: 0)`.
+  - Verify the returned objects are valid and **byte-identical to the same TU built on a Linux worker**
+    (`fc /b`), and that a second identical compile is a **coordinator cache hit** (proves determinism
+    across the two worker platforms — that is the cache invariant).
+  - Watch for Windows-specific breakage in the bundle path: `materialize()` writing nested dirs,
+    backslash-vs-forward-slash in remapped `-I` flags, temp-dir handling.
+  - If it fails: **file a GitHub issue with the log — do not fix worker code.** Toggle WIN-DEV back OUT.
+
+**TASK E — measure the real user-facing win on Windows.** Claude measured **−42 % client CPU** on
+Linux; what's missing is the number Windows devs actually feel: **wall-clock build time**. Use your
+101-TU benchmark harness, same grid, WIN-DEV OUT, and report:
+`SUCO_REMOTE_PREPROCESS=1` vs `=0` — total build time, and client CPU if you can capture it. Post the
+table on **issue #42**. This is the headline number for the flagship Windows→Linux story.
+
+**TASK F — finish the real-hardware Artifacts (was Task C):**
+  - VS Code extension via F5 Dev-Host: status bar with live numbers + the CMake toggle writing
+    `CMAKE_CXX_COMPILER_LAUNCHER`.
+  - The **VS2022 extension** you built (`SUCOGrid.dll`): has it actually been loaded in a real Visual
+    Studio instance? If not, install and try it; if it doesn't load yet, say so plainly in `brain-ag.md`
+    (a scaffold that has never run should not be listed as working).
+  - Confirm the WIN-DEV worker is on **0.12.0** with `libssl`/`libcrypto` bundled (toggle in, it
+    registers + takes a job, toggle out).
+
+Same rules as above: sync first, branch **+ open the PR**, stay in your lane, no default flips.
 
 **TASK C — real-hardware Artifacts:** VS Code extension via F5 Dev-Host (status bar with live numbers +
 CMake toggle), and confirm the WIN-DEV worker is on 0.12.0 with `libssl/libcrypto` DLLs bundled (toggle
