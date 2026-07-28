@@ -270,16 +270,13 @@ invariants above, releases, and the APT/Windows publish workflows.
 
 ### ⟶ ANTIGRAVITY — CURRENT TASKS (strict, updated 2026-07-27)
 
-**START HERE. This is the single source of truth for your next round.** Your Task 1–18 are done
-(installer test, dashboard proof, header matrix, circuit breaker, Qt GUI, benchmark, WIN-DEV
-hardening, wiki, GPG APT repo, VS Code compile, VSIX/VS2022 packaging, the real Windows→Linux PE/COFF
-cross-compile verify) — good work. **But Tasks A/B/C below are NOT done yet** — your last round ended
-before them. They are the current job; do them next.
+**START HERE. This is the single source of truth for your next round.** Tasks 1–18 plus **A and B are
+done** — the broad sweep (15 compilations, 3 TUs × 5 flag sets, 13/15 byte-identical, all valid
+PE-x86-64) and the 101-TU real project under V3 (built with Ninja, linked, `suco_large_bench_app.exe`
+runs correctly). That real-project result is genuinely strong evidence. Good work.
 
-Context you missed: Claude has since pinned both preprocess paths in CI (#79) and gitignored the VSIX
-build output (#78). The `SUCO_REMOTE_PREPROCESS` default-ON flip you made (#74) is **still pending the
-owner's decision** — and **TASK A is the exact evidence that would settle it.** So Task A is the single
-most useful thing you can do. Sync first (you are behind — main is past #79).
+**But the sweep is not conclusive yet, and TASK A2 below is the ONE thing still blocking the default
+decision.** Sync first (main is past #81).
 
 **RULES — non-negotiable:**
 1. **Sync first, every time:** `git fetch origin && git reset --hard origin/main` BEFORE any work.
@@ -292,15 +289,26 @@ most useful thing you can do. Sync first (you are behind — main is past #79).
 client-core change outside your lane. It is NOT settled (Claude recommends opt-in for one release;
 the OWNER decides). Do not change `client_config` or any default again. Propose in `brain-ag.md`, don't merge.
 
-**TASK A (top priority) — BROAD cross-compile verification.** Your PE/COFF check was ONE file. Do a real
-sweep from the Windows client with `SUCO_REMOTE_PREPROCESS=1`: many `.cpp`, multiple/nested project
-headers, varied flags (`-O0/-O2/-O3`, `-g`, `-DNDEBUG`). For each, `fc /b` the V3 `pe-x86-64` object vs
-`SUCO_REMOTE_PREPROCESS=0` (grid) and vs a plain local MinGW compile. Report identical/differ counts +
-every DIFFER on **issue #42**. This breadth is exactly what's missing to justify default-on.
+**TASK A2 (top priority — THE blocker) — explain the 2 DIFFER cases from your sweep.**
+You reported 13/15 byte-identical but not WHICH 2 differed or WHY. For a feature whose entire promise
+is byte-identity, two unexplained byte differences are not a green light — they're the one thing that
+must be understood before any default flip. This is ~15 minutes of work:
 
-**TASK B — a REAL Windows project under V3.** Build a real multi-TU project (your 101-TU benchmark or an
-app) with `SUCO_REMOTE_PREPROCESS=1`; confirm it links + the binary runs; note any TU that fell back
-(time-macro / C++20 module / PCH). Comment the result on **issue #42**.
+1. **Name them:** exactly which TU + flag-set combination differed (e.g. `complex_template.cpp @ -g`).
+2. **Compare against the RIGHT baseline.** Plain-native is NOT the drop-in criterion — grid objects
+   legitimately differ from native (path normalisation). For each DIFFER, also run
+   `SUCO_REMOTE_PREPROCESS=0` (normal grid) and `fc /b` V3 vs that. **If V3 == normal-grid, it is a
+   drop-in and the difference is pre-existing grid behaviour, not a V3 bug.** That is the answer we need.
+3. **Check the machine code:** extract and compare `.text` for each DIFFER
+   (`objcopy -O binary --only-section=.text a.o a.text`, then `fc /b`). If `.text` is identical and only
+   path/debug strings differ, it's benign (that's what Claude found on Linux: `-g` embeds relocatable
+   `./foo.h` instead of the absolute path — expected, deterministic, cacheable).
+4. **Check determinism:** compile the same DIFFER case twice under V3 — the two V3 objects MUST be
+   identical to each other. That is the cache-critical property (a non-deterministic object would be a
+   real bug).
+
+Note: with 3 TUs × 5 flag sets, the `-g` set alone would be 3 compilations, so "2 differ" does NOT map
+cleanly onto "the -g cases". Don't assume — measure. Report all four points on **issue #42**.
 
 **TASK C — real-hardware Artifacts:** VS Code extension via F5 Dev-Host (status bar with live numbers +
 CMake toggle), and confirm the WIN-DEV worker is on 0.12.0 with `libssl/libcrypto` DLLs bundled (toggle
