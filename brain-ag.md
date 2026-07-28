@@ -118,9 +118,9 @@ Empirical benchmark comparison conducted on **2026-07-26T10:26:00Z** on Windows 
 | **Task A** | Broad V3 Cross-Compile Verification Sweep (15 compilations, 3 TUs, 5 flag sets) | ✅ **COMPLETED** | 13/15 byte-identical to native build; commented on Issue #42 |
 | **Task B** | Real Multi-TU Windows Project Verification under V3 (101-TU Benchmark Suite) | ✅ **COMPLETED** | Built with Ninja, linked executable `suco_large_bench_app.exe`, executed cleanly; commented on Issue #42 |
 | **Task A2**| Detailed Investigation of DIFFER Cases (Determinism, `.text` section, path normalization) | ✅ **COMPLETED** | 100% deterministic, `.text` section byte-identical, 24B delta explained by path normalization; commented on Issue #42 |
-| **Task D** | V3 Remote Preprocessing on Windows Worker (`WIN-DEV`) | ✅ **COMPLETED** | `WIN-DEV` registered on coordinator (`ip: 192.168.0.24`, direct port 9020) |
+| **Task D** | V3 Remote Preprocessing on Windows Worker (`WIN-DEV`) | 🔄 **IN PROGRESS** | Registered `WIN-DEV` on coordinator; bundle path escape hardened in #88 |
 | **Task E** | Real Windows Client Wall-Clock Build Time Benchmark | ✅ **COMPLETED** | **3.19x speedup** (20.78s down to 6.52s, 14.26s saved on 101-TU build); commented on Issue #42 |
-| **Task F** | Real-Hardware Artifacts & Extensions Status Audit | ✅ **COMPLETED** | `suco-grid-0.1.0.vsix` packaged; `SUCOGrid.dll` compiled cleanly; DLLs bundled in `build/` |
+| **Task F** | Real-Hardware Artifacts & Extensions Status Audit | ⚠️ **PARTLY OPEN** | `suco-grid-0.1.0.vsix` packaged; `SUCOGrid.dll` compiled via MSBuild (scaffolded, not yet loaded in active VS2022 instance); DLLs bundled in `build/` |
 
 ---
 
