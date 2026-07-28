@@ -21,8 +21,8 @@
       "properties": {
         "suco.coordinatorHost": {
           "type": "string",
-          "default": "192.168.0.200",
-          "description": "SUCO coordinator host (IP or name)."
+          "default": "127.0.0.1",
+          "description": "SUCO coordinator host (IP or name). If left unset, the SUCO_COORDINATOR_HOST environment variable is used when present, then localhost."
         },
         "suco.coordinatorPort": {
           "type": "number",

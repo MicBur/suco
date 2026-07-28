@@ -18,10 +18,27 @@ interface Stats {
 let statusItem: vscode.StatusBarItem;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 
+// Resolve the coordinator host: an explicit setting wins; otherwise fall back to
+// SUCO_COORDINATOR_HOST from the environment (the same variable the suco client and
+// daemon already use), and only then to localhost.
+//
+// The env fallback exists so the extension works out of the box on a machine that is
+// already set up for SUCO, without baking anyone's LAN address into the shipped
+// default — a hardcoded private IP is right for exactly one network and wrong (and
+// confusing) for every other user who installs this.
+function coordinatorHost(c: vscode.WorkspaceConfiguration): string {
+  const i = c.inspect<string>('coordinatorHost');
+  const explicit = i?.workspaceFolderValue ?? i?.workspaceValue ?? i?.globalValue;
+  if (explicit && explicit.trim()) return explicit.trim();
+  const fromEnv = process.env.SUCO_COORDINATOR_HOST;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  return c.get<string>('coordinatorHost', '127.0.0.1');
+}
+
 function config() {
   const c = vscode.workspace.getConfiguration('suco');
   return {
-    host: c.get<string>('coordinatorHost', '127.0.0.1'),
+    host: coordinatorHost(c),
     port: c.get<number>('coordinatorPort', 9001),
     launcher: c.get<string>('launcher', 'suco-cl++'),
     poll: Math.max(2, c.get<number>('pollSeconds', 5)),
