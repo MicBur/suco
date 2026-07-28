@@ -112,18 +112,41 @@ namespace {
 
 // True if `rel` is a safe, in-tree relative path: not absolute, no ".." or root
 // component that would let it escape the workspace. Lexical only.
-// A bundle entry path is only safe if it can never resolve outside the destination.
-// `is_absolute()` alone is NOT enough on Windows: "C:foo.h" is drive-RELATIVE, so
-// is_absolute() is false — yet `dest / "C:foo.h"` yields "C:foo.h" (std::filesystem
-// replaces the whole path when the right-hand side carries a different root name),
-// writing outside the job dir. Reject any root name or root directory as well, which
-// matches the check the worker already applies to client-supplied names
-// (job_executor.cpp job_source_name). Lexical only — no disk access.
+// Validate a bundle entry path on the RAW string, so the verdict is IDENTICAL on
+// every platform. That uniformity is the point: std::filesystem interprets these
+// differently per OS ("C:foo.h" is a drive-relative path on Windows but an ordinary
+// filename on POSIX), so an fs-based check would let a Linux worker accept a bundle
+// that escapes the job dir on a Windows worker — and would make the same bundle
+// behave differently depending on which worker took the job, which the cache cannot
+// tolerate. Legitimate entries are always plain relative '/'-separated project paths.
+//
+// The Windows danger, verified natively (MinGW, std::filesystem):
+//   "C:foo.h"  is_absolute()=false, has_root_name()=true
+//   dest / "C:foo.h"  ->  "C:foo.h"   (operator/ drops the left side)
+// so an is_absolute()-only guard is not enough. "\\\\server\\share\\f.h" (UNC) and
+// "/etc/passwd" escape the same way on Windows without being is_absolute() either.
+bool is_safe_entry_path(const std::string& p) {
+    if (p.empty()) return false;
+    if (p.find('\\') != std::string::npos) return false;  // format is '/'-separated
+    if (p.front() == '/') return false;                   // root directory
+    if (p.size() >= 2 && p[1] == ':') return false;       // "C:..." drive specification
+    for (size_t start = 0;;) {                            // reject ".." components
+        const size_t slash = p.find('/', start);
+        const size_t end = (slash == std::string::npos) ? p.size() : slash;
+        if (p.compare(start, end - start, "..") == 0) return false;
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return true;
+}
+
+// Belt-and-braces second check after lexical normalisation, in case normalisation
+// exposes something the raw-string pass could not see.
 bool is_safe_relative(const fs::path& rel) {
     if (rel.empty()) return false;
     if (rel.is_absolute()) return false;
-    if (rel.has_root_name()) return false;       // "C:foo" (drive-relative) / "//server"
-    if (rel.has_root_directory()) return false;  // "/foo", "\foo"
+    if (rel.has_root_name()) return false;
+    if (rel.has_root_directory()) return false;
     for (const auto& part : rel) {
         if (part == "..") return false;
     }
@@ -142,14 +165,9 @@ bool materialize(const std::string& archive, const std::string& dest_dir) {
     if (ec) return false;
 
     for (const auto& f : files) {
-        // The format is documented as '/'-separated; enforce it rather than trust it.
-        // A backslash means different things per platform (separator on Windows, an
-        // ordinary filename character on POSIX), so an entry like "..\\..\\evil.h"
-        // would be caught on one and not the other. Rejecting them outright keeps the
-        // guard's behaviour identical everywhere. pack() only ever emits '/'.
-        if (f.path.find('\\') != std::string::npos) return false;
+        if (!is_safe_entry_path(f.path)) return false;   // uniform, platform-independent
         fs::path rel = fs::path(f.path).lexically_normal();
-        if (!is_safe_relative(rel)) return false; // zip-slip guard
+        if (!is_safe_relative(rel)) return false;        // post-normalisation backstop
         fs::path out_path = base / rel;
         if (out_path.has_parent_path()) {
             fs::create_directories(out_path.parent_path(), ec);
