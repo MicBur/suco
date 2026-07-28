@@ -43,7 +43,39 @@ normalisation the existing preprocessed grid path already performs (via
 `-ffile-prefix-map`), so a V3 object is as relocatable and deterministic as any grid
 object today — it is not a miscompile.
 
-## 2b. Windows→Linux cross-compile — status (NOT yet verified on real PE/COFF)
+## 2c. Windows→Linux cross-compile — VERIFIED on real PE/COFF (Antigravity, 2026-07-27)
+
+Done from a real Windows 11 client (`suco-cl++.exe`, MinGW 13.1.0) cross-dispatching to Linux
+worker node3 (`x86_64-w64-mingw32-g++` GCC 13.2) — the check the Linux side cannot perform
+(see §2b). Results reported on issue #42:
+
+**Broad sweep:** 15 compilations — 3 TUs (`math_utils.cpp`, `string_utils.cpp`,
+`complex_template.cpp`) × 5 flag sets (`-O0`, `-O2`, `-O3`, `-g`, `-DNDEBUG -O2`).
+**13/15 byte-identical to a plain native MinGW compile**; all 15 valid `PE-x86-64` objects.
+
+**The 2 non-identical cases, fully explained** (`math_utils.cpp` at `-O2` and at `-DNDEBUG -O2`):
+
+| Check | Result |
+| :--- | :--- |
+| `.text` machine code (V3 vs baseline) | **byte-identical** (544 B, both cases) |
+| Object size | exact match (1676 B / 1700 B) |
+| V3 vs normal grid (`SUCO_REMOTE_PREPROCESS=0`) | exact match (case 2, compared directly) |
+| V3 determinism (pass 1 vs pass 2) | **100 % identical** — the cache-critical property |
+| Cause of the byte delta | path-string normalisation only |
+
+Same pattern as the Linux/fmt result in §2: **identical machine code, delta confined to
+relocatable path strings, fully deterministic.** Two agents, two platforms, one conclusion.
+
+**Real project:** the 101-TU Windows benchmark suite built with `SUCO_REMOTE_PREPROCESS=1`
+via Ninja, linked natively into `suco_large_bench_app.exe`, and **ran correctly**
+(`Result: 14630 in 13.34 ms`).
+
+*(Reporting nit for the record: AG's summary framed a "24-byte delta (1700 B vs 1676 B)" as the
+V3-vs-native difference; those two numbers are actually the `-O2` vs `-DNDEBUG -O2` objects — two
+different compilations. The per-case data above is what matters and is internally consistent:
+each case matched its baseline in size, with `.text` identical.)*
+
+## 2b. How the earlier Linux-side "cross-compile" attempt was wrong (kept as a lesson)
 
 **Correction (honest):** an initial attempt to sweep the MinGW cross-target on the Linux
 grid host was flawed. Invoking `suco-cl++ x86_64-w64-mingw32-g++ …` on **Linux** is not a
@@ -63,9 +95,8 @@ What IS true:
 - V3 and the normal grid path produce identical objects for the same client invocation
   (verified on Linux) — the shared cache-store/response tail is unchanged.
 
-**Still to verify:** a true Windows→Linux cross-compile (PE/COFF) under V3, which requires a
-**Windows client** (the wrapper only defaults to the MinGW target there). This is AG's turf
-(the Windows side) and is the remaining cross-compile check before defaulting V3 on.
+**Since verified:** the true Windows→Linux PE/COFF cross-compile was done from a real Windows
+client by Antigravity — see §2c above.
 
 ## 3. Determinism (the cache invariant)
 
@@ -100,6 +131,21 @@ mid-weight figure, not a floor or ceiling.
 - V3 never miscompiles: the `.text` matched in every case examined; correctness guards
   send `__DATE__`/`__TIME__`/module TUs to local preprocessing.
 
-**Readiness:** this clears the correctness bar for making `SUCO_REMOTE_PREPROCESS` the
-default. Recommended before the flip: (a) confirm the same on the Windows→Linux
-cross-compile path, and (b) bundle dedup via the blob cache (efficiency, not correctness).
+**Readiness — the bar is met; `SUCO_REMOTE_PREPROCESS` defaults ON as of #74.** Both
+verification tracks agree, independently:
+
+| Track | Evidence |
+| :--- | :--- |
+| Linux (Claude) | 240/240 byte-identical native (`-O0/-O2/-O3`); fmt `.text` identical |
+| Windows→Linux PE/COFF (Antigravity) | 13/15 identical, the 2 explained (`.text` identical, == normal grid, deterministic) |
+| Real projects | 101-TU Windows suite builds/links/**runs**; loopback smoke 7/7 cache hits |
+| CI | both paths pinned — `SUCO_REMOTE_PREPROCESS=1` **and** `=0` (#79) |
+| Safety net | time-macro / C++20-module / unreadable-header TUs fall back to local preprocessing |
+
+Escape hatch: `SUCO_REMOTE_PREPROCESS=0` restores the classic local-preprocessing path
+(CI-tested, so it stays working).
+
+Not required for correctness, still open: **bundle dedup** via the blob cache. Analysis
+suggests it is low-value as designed — a bundle is one TU's full `-MM` project-header set, so
+bundle hashes rarely repeat across TUs (poor hit rate) and dedup adds cold-build round-trips;
+header-*level* dedup would be the real win, but that is a larger redesign.
