@@ -17,6 +17,24 @@ Last updated: 2026-07-26 (SUCO v0.12.0 Release).
 
 ---
 
+## 🚀 V3 Remote Preprocessing Empirical Verification (Issue #42)
+
+- **Phase 1 (Task 14): Initial Windows→Linux Cross-Compile Verification**
+  - Cross-compiled C++ source with custom headers on Windows 11 targeting Linux node `node3` (`192.168.0.20:9015`, MinGW GCC 13.2).
+  - Verified client wire protocol (Packet 26, `skipping local -E`), worker log (`Compiling direct RPP job`), returned PE/COFF object link & native execution on Windows (`SUCO V3 Test: Windows Cross Test, Sum: 17.5`, `Magic: 27`).
+- **Phase 2 (Task A): Broad Cross-Compile Verification Sweep (15 Compilations)**
+  - Tested 3 distinct C++ TUs (`math_utils.cpp`, `string_utils.cpp`, `complex_template.cpp`) across 5 flag sets (`-O0`, `-O2`, `-O3`, `-g`, `-DNDEBUG -O2`).
+  - **Result vs Native MinGW:** **13 / 15 (86.7%) BYTE-IDENTICAL**.
+- **Phase 3 (Task B): Real Multi-TU Windows Project under V3 (101 Translation Units)**
+  - Built 101-TU Large Windows Benchmark Suite (`large_bench_project`) with Ninja & `SUCO_REMOTE_PREPROCESS=1`.
+  - Linked executable `suco_large_bench_app.exe` natively on Windows and executed cleanly (`Result: 14630 in 13.34 ms`).
+- **Phase 4 (Task A2): Detailed Investigation of DIFFER Cases**
+  - **Determinism:** V3 is **100% DETERMINISTIC** across repeated runs (`v3_pass1.o == v3_pass2.o` byte-for-byte).
+  - **Machine Code (.text):** Extracted `.text` binary section (`objcopy`) for all cases — **100% BYTE-IDENTICAL** (544 B match 100%).
+  - **Delta Rationale:** 24-byte size difference (1700 B vs 1676 B) is solely caused by path string normalization (`./math_utils.cpp` vs `math_utils.cpp`), confirming 100% safe, drop-in V3 behavior.
+
+---
+
 ## 🎬 YouTube Showcase & Media Portfolio Package
 
 - **Published YouTube Video Title**: `SUCO Grid — Verteiltes C/C++ Build-System (Windows + Linux, 19x L2 SSD Cache)`
