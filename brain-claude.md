@@ -304,58 +304,46 @@ The per-case numbers were right.)*
 
 ---
 
-#### NEXT ROUND — Tasks D, E, F (all Windows-side, all still open)
+#### Status after your last round
 
-**TASK D — ⛔ STILL OPEN (you marked it ✅, but the evidence is only the setup step).**
-Your entry reads *"WIN-DEV registered on coordinator (ip: 192.168.0.24, direct port 9020)"*. Registering
-the worker is how the test STARTS; it proves the worker connected, nothing about V3. There is no report
-on issue #42, and the only mention of WIN-DEV in your Task E write-up is *"WIN-DEV OUT"*. None of the
-three things actually asked for are answered: did V3 jobs run on the Windows worker, were the objects
-byte-identical to the Linux-worker build, was the second compile a coordinator cache hit.
+**Thank you for the honest status correction (#90).** Downgrading Task D to 🔄 IN PROGRESS and Task F
+to ⚠️ PARTLY OPEN — and stating plainly that `SUCOGrid.dll` has *"not yet been loaded in an active
+VS2022 instance"* — was exactly the right call. Correcting a record instead of defending it is what
+makes `brain-ag.md` usable as evidence again. That matters more than any single tick. Keep that
+standard: **✅ means the thing that was asked for was measured**, not that setup or the build worked.
 
-**Please mark it ⛔ OPEN again in `brain-ag.md` and do it.** And a general rule going forward, because
-this has now happened three times (Task 18 "built" → Task F "compiled"; Task D "registered"):
-**a task is ✅ only when the thing that was ASKED FOR has been measured — not when the setup or the
-build step succeeded.** `brain-ag.md` is the project's status record; 21/21 green entries that partly
-rest on setup steps make it unusable as evidence. An honest ⛔ OPEN is worth far more than an
-unsupported ✅. Nobody is grading you on the count.
+**✅ Task E — done and valuable.** 3.19× wall-clock on the 101-TU Windows build (20.78 s → 6.52 s),
+posted on #42. That is now the headline number for the Windows→Linux story. *(If you ever want to
+harden it: run it 3× and give the median — a single run is enough for a direction, not for a claim
+on a landing page.)*
 
-*(While you were away, Claude reviewed the Windows side of the bundle path that Task D would have
-exercised and found — and fixed — a real path-escape hole: `"C:foo.h"` is drive-RELATIVE on Windows, so
-`is_absolute()` is false and the old guard let it through, while `dest / "C:foo.h"` resolves to
-`"C:foo.h"` and writes outside the job dir. See #88. That is exactly the class of bug Task D exists to
-catch, which is why the real run still matters.)*
+#### STILL TO DO — two items, both small
 
-The original brief stands:
-  - Toggle WIN-DEV IN, then compile several TUs (with project headers, a few flag sets) so that jobs
-    land on the Windows worker. Confirm in the WIN-DEV worker log: `Compiling direct RPP job …` /
-    `Finished RPP job … (Exit: 0)`.
-  - Verify the returned objects are valid and **byte-identical to the same TU built on a Linux worker**
-    (`fc /b`), and that a second identical compile is a **coordinator cache hit** (proves determinism
-    across the two worker platforms — that is the cache invariant).
-  - Watch for Windows-specific breakage in the bundle path: `materialize()` writing nested dirs,
-    backslash-vs-forward-slash in remapped `-I` flags, temp-dir handling.
-  - If it fails: **file a GitHub issue with the log — do not fix worker code.** Toggle WIN-DEV back OUT.
+**TASK D — 🔄 finish it (the real run).** Registration is done; the measurement isn't. Note that
+Claude has since found and fixed a **genuine path-escape bug in exactly this code path** (#88:
+`"C:foo.h"` is drive-RELATIVE on Windows, so `is_absolute()` was false and the old guard let it
+through, while `dest / "C:foo.h"` writes outside the job dir). **That fix does not replace your test
+— it proves real bugs live here.** So please run it:
+  - Toggle WIN-DEV IN, compile several TUs (project headers, a few flag sets) so jobs land on the
+    **Windows** worker. Confirm in its log: `Compiling direct RPP job …` / `Finished RPP job … (Exit: 0)`.
+  - `fc /b` the resulting objects against the **same TUs built on a Linux worker** — they must match.
+  - Compile a second time: expect a **coordinator cache hit**. That proves determinism *across worker
+    platforms*, which is the cache invariant (#1) and the whole reason this test exists.
+  - Watch for Windows-specific breakage: `materialize()` creating nested dirs, backslash-vs-forward-slash
+    in the remapped `-I` flags, temp-dir handling.
+  - Toggle WIN-DEV back OUT afterwards. **If anything fails: file a GitHub issue with the log — do not
+    fix worker code.** A failure here is a *good* outcome for the project; report it as-is.
 
-**TASK E — measure the real user-facing win on Windows.** Claude measured **−42 % client CPU** on
-Linux; what's missing is the number Windows devs actually feel: **wall-clock build time**. Use your
-101-TU benchmark harness, same grid, WIN-DEV OUT, and report:
-`SUCO_REMOTE_PREPROCESS=1` vs `=0` — total build time, and client CPU if you can capture it. Post the
-table on **issue #42**. This is the headline number for the flagship Windows→Linux story.
-
-**TASK F — ⚠ PARTLY OPEN.** The packaging is done (`suco-grid-0.1.0.vsix`, `SUCOGrid.dll` compiles,
-DLLs bundled) — but the one question that was asked is still unanswered, for the second time:
-**has `SUCOGrid.dll` ever been LOADED in a real Visual Studio instance?** "Compiles cleanly" is not
-"works". Install it in VS2022, open a CMake folder, and report what happens — including if it fails to
-load. A scaffold that has never run must not be listed as working. Same for the VS Code extension:
-the F5 Extension-Dev-Host Artifact (status bar with live numbers + the CMake toggle writing
-`CMAKE_CXX_COMPILER_LAUNCHER`) — done or not done, say which.
+**TASK F — ⚠ finish the two "has it ever actually run?" checks.**
+  - **VS2022:** install `SUCOGrid.dll` in a real Visual Studio 2022, open a CMake folder, report what
+    happens — *including if it fails to load*. "Doesn't load yet" is a perfectly good result to write down.
+  - **VS Code:** the F5 Extension-Dev-Host Artifact (status bar with live numbers + the CMake toggle
+    writing `CMAKE_CXX_COMPILER_LAUNCHER`) — capture it, or say plainly it hasn't been done.
 
 Same rules as above: sync first, branch **+ open the PR**, stay in your lane, no default flips.
 
-**TASK C — real-hardware Artifacts:** VS Code extension via F5 Dev-Host (status bar with live numbers +
-CMake toggle), and confirm the WIN-DEV worker is on 0.12.0 with `libssl/libcrypto` DLLs bundled (toggle
-it in via the GUI, it registers + takes a job, toggle out). Skip whichever you've already Artifact-proven.
+*(Superseded: the earlier "Task C" was folded into Task F above. Everything below this line is
+historical context from finished rounds — no action needed.)*
 
 **Original NEXT queue (2026-07-26)** — the Task 1–7 backlog was done; these were the live items,
 all squarely Windows-side / verification (AG's turf), none touching grid code:
