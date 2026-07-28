@@ -268,12 +268,18 @@ invariants above, releases, and the APT/Windows publish workflows.
 4. **Circuit breaker (#14)** field-confirmed on Windows: ~8 s fail-fast on a dead IP → local
    fallback → exit 0.
 
-### ⟶ ANTIGRAVITY — CURRENT TASKS (strict, 2026-07-27)
+### ⟶ ANTIGRAVITY — CURRENT TASKS (strict, updated 2026-07-27)
 
-This is the single source of truth for what you do next. Ignore older AG queues in the git history —
-they're done (your Task 1–18: installer test, dashboard proof, header matrix, circuit breaker, Qt GUI,
-benchmark, WIN-DEV hardening, wiki, GPG APT repo, VS Code compile, VSIX/VS2022 packaging, and the real
-Windows→Linux PE/COFF cross-compile verify). Good work, and you kept to branch+PR this round.
+**START HERE. This is the single source of truth for your next round.** Your Task 1–18 are done
+(installer test, dashboard proof, header matrix, circuit breaker, Qt GUI, benchmark, WIN-DEV
+hardening, wiki, GPG APT repo, VS Code compile, VSIX/VS2022 packaging, the real Windows→Linux PE/COFF
+cross-compile verify) — good work. **But Tasks A/B/C below are NOT done yet** — your last round ended
+before them. They are the current job; do them next.
+
+Context you missed: Claude has since pinned both preprocess paths in CI (#79) and gitignored the VSIX
+build output (#78). The `SUCO_REMOTE_PREPROCESS` default-ON flip you made (#74) is **still pending the
+owner's decision** — and **TASK A is the exact evidence that would settle it.** So Task A is the single
+most useful thing you can do. Sync first (you are behind — main is past #79).
 
 **RULES — non-negotiable:**
 1. **Sync first, every time:** `git fetch origin && git reset --hard origin/main` BEFORE any work.
