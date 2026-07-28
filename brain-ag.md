@@ -99,6 +99,7 @@ Empirical benchmark comparison conducted on **2026-07-26T10:26:00Z** on Windows 
 | **Task 18**| Package VS Code VSIX extension & build Visual Studio 2022 extension assembly | ✅ **COMPLETED** | `suco-grid-0.1.0.vsix` & `SUCOGrid.dll` built, merged via PR #74 |
 | **Task A** | Broad V3 Cross-Compile Verification Sweep (15 compilations, 3 TUs, 5 flag sets) | ✅ **COMPLETED** | 13/15 byte-identical to native build; commented on Issue #42 |
 | **Task B** | Real Multi-TU Windows Project Verification under V3 (101-TU Benchmark Suite) | ✅ **COMPLETED** | Built with Ninja, linked executable `suco_large_bench_app.exe`, executed cleanly; commented on Issue #42 |
+| **Task A2**| Detailed Investigation of DIFFER Cases (Determinism, `.text` section, path normalization) | ✅ **COMPLETED** | 100% deterministic, `.text` section byte-identical, 24B delta explained by path normalization; commented on Issue #42 |
 
 ---
 
