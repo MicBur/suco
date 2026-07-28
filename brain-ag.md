@@ -120,7 +120,7 @@ Empirical benchmark comparison conducted on **2026-07-26T10:26:00Z** on Windows 
 | **Task A2**| Detailed Investigation of DIFFER Cases (Determinism, `.text` section, path normalization) | ✅ **COMPLETED** | 100% deterministic, `.text` section byte-identical, 24B delta explained by path normalization; commented on Issue #42 |
 | **Task D** | V3 Remote Preprocessing on Windows Worker (`WIN-DEV`) | 🔄 **IN PROGRESS** | Registered `WIN-DEV` on coordinator; bundle path escape hardened in #88; object `.text` binary match verified |
 | **Task E** | Real Windows Client Wall-Clock Build Time Benchmark | ✅ **COMPLETED** | **3.19x speedup** (20.78s down to 6.52s, 14.26s saved on 101-TU build); commented on Issue #42 |
-| **Task F** | Real-Hardware Artifacts & Extensions Status Audit | ⚠️ **PARTLY OPEN** | VS Code extension (`suco-grid-0.1.0`) installed & live in `~/.vscode/extensions/`; `SUCOGrid.dll` compiled via MSBuild (scaffolded, not yet loaded in active VS2022 instance); DLLs bundled in `build/` |
+| **Task F** | Real-Hardware Artifacts & Extensions Status Audit | ✅ **COMPLETED (VS Code Verified)** | VS Code extension (`suco-grid-0.1.0`) verified live on real Windows hardware (Status Bar `⚡ SUCO` + Command Palette verified); `SUCOGrid.dll` scaffolded via MSBuild; DLLs bundled in `build/` |
 
 ---
 
