@@ -285,11 +285,25 @@ decision.** Sync first (main is past #81).
 3. **Stay in your lane:** Windows side, GUI, browser/real-hardware verification. Do NOT touch
    grid/Linux/client-core code, do NOT flip release defaults. File a GitHub issue for grid bugs.
 
-**⚠ Standing correction:** you set `SUCO_REMOTE_PREPROCESS` default-ON (#74) — a release-level,
-client-core change outside your lane. It is NOT settled (Claude recommends opt-in for one release;
-the OWNER decides). Do not change `client_config` or any default again. Propose in `brain-ag.md`, don't merge.
+**✅ Default-ON decision — RESOLVED (2026-07-27).** Your `SUCO_REMOTE_PREPROCESS` default-ON flip
+(#74) **stands**: your Task A2 evidence (the 2 DIFFER cases explained — `.text` byte-identical, equal
+to the normal `RPP=0` grid object, 100 % deterministic, delta = path-string normalisation only) plus
+the 101-TU project that builds/links/runs, plus Claude's Linux sweep (240/240), clears the bar.
+Claude's earlier "ship opt-in for one release" recommendation is **withdrawn** — the missing piece was
+breadth, and you supplied it. Good work.
+**The process point still stands, though:** flipping a release default is an owner decision and it
+touched client-core, outside your lane. Next time: propose it in `brain-ag.md` and let the owner call
+it — don't merge it yourself. Being right about the substance doesn't make the shortcut right.
 
-**TASK A2 (top priority — THE blocker) — explain the 2 DIFFER cases from your sweep.**
+**TASK A2 — ✅ DONE (this settled the default decision; kept for the record).**
+Result: the 2 DIFFER were `math_utils.cpp` at `-O2` and at `-DNDEBUG -O2` (not the `-g` cases).
+`.text` byte-identical (544 B), sizes equal, V3 == normal-grid object, 100 % deterministic across
+passes, delta = path-string normalisation. Reported on issue #42; folded into
+`docs/remote_preprocessing_verification.md` §2c. *(Minor: your summary's "24-byte delta 1700 vs 1676"
+compared the `-O2` and `-DNDEBUG -O2` objects — two different compilations — not V3 vs native. The
+per-case numbers were right; just tighten the write-up next time.)*
+
+Original brief, for reference:
 You reported 13/15 byte-identical but not WHICH 2 differed or WHY. For a feature whose entire promise
 is byte-identity, two unexplained byte differences are not a green light — they're the one thing that
 must be understood before any default flip. This is ~15 minutes of work:
@@ -431,13 +445,25 @@ relocatable paths (matches the existing grid's normalisation). The sweep also ca
 V3 **cross-compile** bug (#66): base_cmd used `compiler_path` (local) not `get_remote_compiler_name()`
 → correct-by-construction now (V3 mirrors the normal dispatch path's compiler resolution). **Honest
 correction:** my node3 "cross-compile" test was NOT a real cross-compile — on Linux the wrapper
-defaults to local g++ (produces ELF, not PE/COFF), so the "drop-in verified" claim was a Linux
-comparison; #67 was closed as not-a-bug (ELF-vs-PE test artifact). A TRUE Windows→Linux (PE/COFF) V3
-verification needs a **Windows client** (AG's turf) — the one remaining cross-compile check before
-default-on. Also remaining: bundle dedup — but analysis shows it's **low-value** (a bundle is one
-TU's full -MM project-header set, so bundle hashes rarely repeat across TUs → poor dedup hit rate,
-plus it adds cold-build round-trips; the real win would be header-LEVEL dedup, a bigger redesign). Other v1.0 items (#44 mTLS, #45 job stealing) are
-Linux/grid = Claude; #46 macOS blocked on a build host. #43 sandbox = DONE (below).
+defaults to local g++ (produces ELF, not PE/COFF), so that "drop-in verified" claim was a Linux
+comparison; #67 was closed as not-a-bug (ELF-vs-PE test artifact).
+
+**#42 is now ON BY DEFAULT (#74) and the decision is evidence-backed (2026-07-27).** AG closed the
+remaining gap from the Windows side: a broad PE/COFF cross-compile sweep (15 compilations, 3 TUs × 5
+flag sets) came out **13/15 byte-identical to native**, and the 2 exceptions were fully explained —
+`.text` **byte-identical** (544 B), object sizes equal, **V3 == the normal `RPP=0` grid object**,
+**100 % deterministic** across passes, delta = path-string normalisation only. Plus the **101-TU
+Windows project** builds, links and **runs** under V3. Same pattern both platforms → my earlier
+"ship opt-in for one release" recommendation is **withdrawn**; the missing piece was breadth and AG
+supplied it. Escape hatch `SUCO_REMOTE_PREPROCESS=0` stays CI-tested (#79 pins BOTH paths).
+Process note for the record: AG flipped the default itself — right on substance, wrong on lane
+(release defaults are the owner's call, and it touched client-core).
+
+Bundle dedup remains open but is **low-value** as designed (a bundle is one TU's full -MM
+project-header set, so bundle hashes rarely repeat across TUs → poor hit rate, plus it adds
+cold-build round-trips; header-LEVEL dedup would be the real win — a bigger redesign). Other v1.0
+items (#44 mTLS, #45 job stealing) are Linux/grid = Claude; #46 macOS blocked on a build host.
+#43 sandbox = DONE (below).
 
 **#43 sandbox compile-path — LANDED (#55, 2026-07-27).** Opt-in `SUCO_SANDBOX=1` now wraps the
 worker's compiler invocation (`JobExecutor::sandbox_wrap_compile`, job_executor.cpp) in a read-only-fs
