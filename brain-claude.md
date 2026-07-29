@@ -355,22 +355,45 @@ up elsewhere.
 Note also that Claude found and fixed a **genuine path-escape bug in exactly this code path** (#88:
 `"C:foo.h"` is drive-RELATIVE on Windows, so `is_absolute()` was false and the old guard let it
 through, while `dest / "C:foo.h"` writes outside the job dir). **That fix does not replace this test
-— it proves real bugs live here.** The run itself:
-  - Toggle WIN-DEV IN, compile several TUs (project headers, a few flag sets) so jobs land on the
-    **Windows** worker. Confirm in its log: `Compiling direct RPP job …` / `Finished RPP job … (Exit: 0)`.
-  - `fc /b` the resulting objects against the **same TUs built on a Linux worker** — they must match.
-  - Compile a second time: expect a **coordinator cache hit**. That proves determinism *across worker
-    platforms*, which is the cache invariant (#1) and the whole reason this test exists.
-  - Watch for Windows-specific breakage: `materialize()` creating nested dirs, backslash-vs-forward-slash
-    in the remapped `-I` flags, temp-dir handling.
-  - Toggle WIN-DEV back OUT afterwards. **If anything fails: file a GitHub issue with the log — do not
-    fix worker code.** A failure here is a *good* outcome for the project; report it as-is.
+— it proves real bugs live here.**
 
-**TASK F — ⚠ finish the two "has it ever actually run?" checks.**
-  - **VS2022:** install `SUCOGrid.dll` in a real Visual Studio 2022, open a CMake folder, report what
-    happens — *including if it fails to load*. "Doesn't load yet" is a perfectly good result to write down.
-  - **VS Code:** the F5 Extension-Dev-Host Artifact (status bar with live numbers + the CMake toggle
-    writing `CMAKE_CXX_COMPILER_LAUNCHER`) — capture it, or say plainly it hasn't been done.
+**Cut down to ONE question, because asking the full version twice hasn't worked.** Forget the
+byte-identity and cache-hit parts for now. Do only this:
+
+> Toggle WIN-DEV IN. Compile **one** `.cpp` that has a project header. Then paste the WIN-DEV worker
+> log lines for that compile. Toggle WIN-DEV back OUT.
+
+The only thing being asked is: **does the WIN-DEV log contain `Compiling direct RPP job …`, yes or no?**
+- **Yes** → paste the line. The rest of the verification then follows easily and Claude can help.
+- **No** (jobs went to Linux workers, or the log shows the old `Compiling direct job`) → say that. It is
+  a perfectly good, useful answer — it means the scheduler never routes V3 to a Windows worker, which
+  would itself close the question.
+- **Can't run it** (GUI toggle broken, worker won't start, no time) → write ⛔ NOT DONE + the reason.
+  That is the *best* answer if the test isn't happening, because then Claude stops assuming coverage
+  that doesn't exist and arranges it another way.
+
+Any of those three is a success. The only wrong outcome is a ✅ without the log line.
+
+**TASK F — ⚠ one question, same shape.** **Has `SUCOGrid.dll` ever been loaded in a running Visual
+Studio 2022 — yes or no?** Install it, open a CMake folder, report what happens *including a failure to
+load*. "Doesn't load yet" is a perfectly good answer to write down. (The VS Code half is done — the
+real-hardware verification was good work.)
+
+---
+
+#### Two more, better suited to what you're demonstrably good at
+
+**TASK G — installer end-to-end with the NEW default.** You did this well for 0.11.0, and it matters
+again now: **remote preprocessing is ON by default**, so a freshly *installed* client behaves
+differently from the 0.12.0 binaries. Build/install the current installer, then from the installed
+`suco-cl++` (not a dev-tree build) compile a small real project against the grid and confirm: it works,
+objects link, the binary runs, and the client log shows `[RPP]`. This validates the artefact users
+actually get. Report on a GitHub issue or in `brain-ag.md` with the evidence.
+
+**TASK H — firm up the 3.19× number.** It is a good result and it will end up on a README or a video,
+so it should not rest on a single run. Re-run the 101-TU benchmark **3× per mode** (`RPP=1` and `RPP=0`,
+WIN-DEV OUT, same grid) and report the **median** plus the spread. If the median holds near 3×, that
+becomes a claim worth publishing; if it swings a lot, better to know before it is public.
 
 Same rules as above: sync first, branch **+ open the PR**, stay in your lane, no default flips.
 
