@@ -4,8 +4,9 @@
 > same understanding. **This file is in a PUBLIC repo — never put passwords, `SUCO_SECRET`
 > values, tokens, or exploitable host details in it.** Credentials live only in private notes.
 
-Last updated: 2026-07-27 (v0.12.0 released; v1.0.0 milestone open, #42 remote-preprocessing
-foundation landed — see the v1.0.0 roadmap section below).
+Last updated: 2026-07-29 (v0.12.0 released and deployed; v1.0.0 milestone open. **#42 remote
+preprocessing is complete and now ON BY DEFAULT**, #43 worker sandboxing landed opt-in — see
+"Current state" and the v1.0.0 roadmap section below).
 
 ---
 
@@ -61,11 +62,20 @@ strings — memory traffic only.)
 
 ---
 
-## Current state (2026-07-26)
+## Current state (2026-07-29)
 
-- Public repo **github.com/MicBur/suco**, released **v0.12.0** (grid still on 0.11.0 until redeployed). APT
-  repo signed + published on every `v*` tag → GitHub Pages; CI green. Docs: `docs/INSTALL.md`,
-  `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
+- Public repo **github.com/MicBur/suco**, released **v0.12.0**; the grid (all 4 Linux nodes) runs
+  0.12.0. APT repo signed + published on every `v*` tag → GitHub Pages; CI green. Docs:
+  `docs/INSTALL.md`, `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
+- **⚡ Behaviour change since 0.12.0 was tagged: remote preprocessing (#42) is ON BY DEFAULT.**
+  Eligible TUs no longer run `-E` locally — the client builds a project-header bundle (cheap `-MM`)
+  and the worker preprocesses. Measured: **−42 % client CPU** (Linux) and **3.19× wall-clock** on a
+  101-TU Windows build. Byte-identity verified on both platforms; time-macro / C++20-module TUs fall
+  back to local preprocessing automatically. Escape hatch: `SUCO_REMOTE_PREPROCESS=0` (CI-pinned, so
+  it stays working). Full evidence: `docs/remote_preprocessing_verification.md`. **This ships in the
+  next release, not in the 0.12.0 binaries** — anyone testing 0.12.0 artefacts sees the old behaviour.
+- **Worker compile sandboxing (#43)** is available, opt-in via `SUCO_SANDBOX=1` (bwrap preferred,
+  unshare fallback). Off by default.
 - **The Windows→Linux cross-compile vision works out of the box.** A Windows dev runs
   `suco-cl++ -c foo.cpp -o foo.o`, a Linux worker cross-compiles with `x86_64-w64-mingw32-g++`,
   and a real `pe-x86-64` object comes back — no configuration. Verified independently by both
@@ -519,9 +529,10 @@ unprivileged userns so it stays grid-verified.
 - **⚠ Security (owner action):** the grid SSH/sudo password must be rotated — an old value was once
   exposed in a public repo. The deploy scripts no longer hardcode it.
 - **PAT rotation (owner):** the GitHub PAT in the Brain-OS git remote should be rotated.
-- **Sandboxing (#43): NO LONGER blocked** — `bwrap` is installed on node3 and unprivileged userns
-  works there; both backends compile byte-identically (see the v1.0.0 section). Still needs the
-  worker-side wiring + the writable-temp-path bind. ThinLTO (`clang lld`) may still want packages.
+- **Sandboxing (#43): LANDED (#55), not blocked** — the worker-side wiring is in and grid-verified;
+  `bwrap` is installed on node3 and unprivileged userns works there. Remaining to fully close #43:
+  **per-job `/tmp` isolation** (it currently binds all of `/tmp` read-write, which is coarse when
+  several jobs share a worker). ThinLTO (`clang lld`) may still want packages.
 - **Untested here:** `.rpm` (dnf/zypper) and a Homebrew formula — need an environment with
   `rpmbuild` / macOS before shipping.
 - **Nice-to-have:** further trim client per-TU feed cost (the memchr header-split landed; the goal is
