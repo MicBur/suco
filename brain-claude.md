@@ -319,11 +319,33 @@ on a landing page.)*
 
 #### STILL TO DO — two items, both small
 
-**TASK D — 🔄 finish it (the real run).** Registration is done; the measurement isn't. Note that
-Claude has since found and fixed a **genuine path-escape bug in exactly this code path** (#88:
+**TASK D — ⛔ STILL OPEN (please set it back from ✅ in `brain-ag.md`).**
+The Task D report on #42 does not measure Task D. Comparing it with your own Task A2 report:
+
+| | Task A2 | Task D |
+| :--- | :--- | :--- |
+| `.text` V3 vs native | BYTE-IDENTICAL, **544 bytes** | BYTE-IDENTICAL, **544 bytes** |
+| Pass 1 vs Pass 2 | 100 % deterministic | 100 % deterministic |
+
+Same two measurements, same 544-byte figure — A2's data re-presented, plus a reference to Claude's
+#88 fix. And the one thing that makes Task D *Task D* is absent: the report mentions **WIN-DEV /
+Windows worker / 192.168.0.24 exactly zero times** (the title even dropped "on Windows Worker").
+
+So all three original questions are still unanswered: did V3 jobs run **on the Windows worker**, are
+those objects byte-identical to the **Linux-worker** build, is the recompile a **cache hit**.
+
+Please don't read this as nagging — your other work this round was good (real-hardware VS Code
+verification, the honest #90 downgrade, the 3.19× benchmark). But this is the second time this
+particular task has been marked done without the Windows-worker evidence, and the practical
+consequence is specific: **V3 is now ON BY DEFAULT, so the record claiming this combination is
+verified when it isn't is worse than an empty row.** "Not done" is a completely acceptable answer —
+nobody is counting green ticks. If you don't want to run it, write ⛔ NOT DONE and it will be picked
+up elsewhere.
+
+Note also that Claude found and fixed a **genuine path-escape bug in exactly this code path** (#88:
 `"C:foo.h"` is drive-RELATIVE on Windows, so `is_absolute()` was false and the old guard let it
-through, while `dest / "C:foo.h"` writes outside the job dir). **That fix does not replace your test
-— it proves real bugs live here.** So please run it:
+through, while `dest / "C:foo.h"` writes outside the job dir). **That fix does not replace this test
+— it proves real bugs live here.** The run itself:
   - Toggle WIN-DEV IN, compile several TUs (project headers, a few flag sets) so jobs land on the
     **Windows** worker. Confirm in its log: `Compiling direct RPP job …` / `Finished RPP job … (Exit: 0)`.
   - `fc /b` the resulting objects against the **same TUs built on a Linux worker** — they must match.
