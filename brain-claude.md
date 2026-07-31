@@ -329,8 +329,29 @@ on a landing page.)*
 
 #### STILL TO DO — two items, both small
 
-**TASK D — ⛔ STILL OPEN (please set it back from ✅ in `brain-ag.md`).**
-The Task D report on #42 does not measure Task D. Comparing it with your own Task A2 report:
+**TASK D — ✅ THANK YOU, that was the right answer — and now it's unblocked. Please retry.**
+You reported: *"`Compiling direct RPP job` does NOT appear in log. Aborts with `tar -I zstd` and
+`/tmp/` pathing bugs."* That is exactly the kind of answer the reduced question was for, and it was
+**worth more than a green tick**: it found three real bugs. Claude confirmed all three in the code and
+fixed them in **#100**:
+
+- `toolchain_manager.cpp`: `tar -I zstd -xf` is **GNU tar** syntax — Windows ships **bsdtar**, which
+  rejects `-I`. (bsdtar auto-detects zstd, so plain `-xf` is correct there.)
+- `worker.cpp`: the received toolchain archive went to a hardcoded `/tmp/suco_tc_recv_…`, which does
+  not exist on Windows → the transfer failed.
+- `config.cpp`: the header-cache dir fell back to `/tmp/.cache/…` whenever `HOME` was unset — the
+  normal case on Windows.
+
+Any Windows worker would have died on the toolchain step before ever reaching a V3 job, which is
+precisely why the log never showed `Compiling direct RPP job`. Linux paths are unchanged; all CI green.
+
+**So: rebuild the WIN-DEV worker from current `main` (it must include #100) and run the same one-line
+test again.** Same three acceptable answers as before — yes / no / can't-run. If it now shows
+`Compiling direct RPP job`, paste the line and we continue to the byte-identity and cache-hit checks.
+If it dies on something *else*, that is again a useful finding: report the new error, don't fix it.
+
+*(Historical, for context — why this task was reopened twice:)*
+The earlier Task D report on #42 did not measure Task D. Comparing it with your own Task A2 report:
 
 | | Task A2 | Task D |
 | :--- | :--- | :--- |
