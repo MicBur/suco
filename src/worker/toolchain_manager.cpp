@@ -82,7 +82,15 @@ bool ToolchainManager::extract_toolchain(const std::string& hash, const std::str
 
     SUCO_LOG_INFO("Extracting toolchain {} from {}...", hash, archive_path);
 
+    // `-I zstd` is GNU tar syntax. Windows 10/11 ship **bsdtar** (libarchive) as
+    // tar.exe, which rejects -I outright — so a Windows worker failed every toolchain
+    // extraction and could never run a dispatched job at all. bsdtar detects zstd from
+    // the stream itself, so plain -xf is both sufficient and correct there.
+#ifdef _WIN32
+    std::string cmd = "tar -xf \"" + archive_path + "\" -C \"" + tmp_dir + "\"";
+#else
     std::string cmd = "tar -I zstd -xf \"" + archive_path + "\" -C \"" + tmp_dir + "\"";
+#endif
     std::string out_log;
     if (!run_cmd_simple(cmd, out_log)) {
         SUCO_LOG_ERROR("Failed to extract toolchain archive {}. Output: {}", archive_path, out_log);

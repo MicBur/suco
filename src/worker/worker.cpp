@@ -642,7 +642,15 @@ void Worker::run_worker_compile_loop() {
                             std::error_code ec;
                             std::filesystem::create_directories(std::filesystem::path(cache_dir).parent_path(), ec);
                             
-                            std::string temp_archive = "/tmp/suco_tc_recv_" + toolchain_hash + ".tar.zst";
+                            // Use the platform temp dir: "/tmp" does not exist on a
+                            // Windows worker, so this write failed and the toolchain
+                            // was never received. Fall back next to the cache dir if
+                            // the temp dir cannot be determined.
+                            std::error_code tec;
+                            std::filesystem::path tdir = std::filesystem::temp_directory_path(tec);
+                            if (tec) { tec.clear(); tdir = std::filesystem::path(cache_dir).parent_path(); }
+                            std::string temp_archive =
+                                (tdir / ("suco_tc_recv_" + toolchain_hash + ".tar.zst")).string();
                             if (suco::receive_file(download_sock, temp_archive)) {
                                 SUCO_LOG_INFO("Worker successfully received toolchain archive: {}", temp_archive);
                                 ToolchainManager::extract_toolchain(toolchain_hash, temp_archive);

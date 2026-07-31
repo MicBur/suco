@@ -1,6 +1,7 @@
 #include "config.h"
 #include "protocol.h"
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 
 namespace suco::worker {
@@ -61,11 +62,21 @@ Config Config::parse(int argc, char** argv) {
     if (hc_dir_env) {
         config.header_cache_dir = hc_dir_env;
     } else {
+        // HOME is normally unset on Windows (it uses USERPROFILE/LOCALAPPDATA), so the
+        // old "/tmp/..." fallback handed a Windows worker a path that cannot exist.
+        // Try the platform's own home variables, then the platform temp dir.
         const char* home = std::getenv("HOME");
-        if (home) {
+#ifdef _WIN32
+        if (!home) home = std::getenv("LOCALAPPDATA");
+        if (!home) home = std::getenv("USERPROFILE");
+#endif
+        if (home && *home) {
             config.header_cache_dir = std::string(home) + "/.cache/suco/headers";
         } else {
-            config.header_cache_dir = "/tmp/.cache/suco/headers";
+            std::error_code ec;
+            const std::filesystem::path tdir = std::filesystem::temp_directory_path(ec);
+            config.header_cache_dir =
+                (ec ? std::string(".") : tdir.generic_string()) + "/.cache/suco/headers";
         }
     }
 
