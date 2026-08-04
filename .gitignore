@@ -60,3 +60,19 @@ generate_benchmark.ps1
 d??comp?scratch?qt_test/
 
 brain-claude.legacy.local
+
+# --- build / packaging / test artefacts (generated; ~400 MB, never commit) ---
+# packaged release tree, installer test output, RPP scratch project
+dist/
+test_install_dir/
+test_rpp/
+# downloaded build tooling (NSIS, 7zr) and local agent build notes
+tools/
+memory/
+# generated 101-TU benchmark corpus and its build dirs
+large_bench_project/
+suco_test_log.txt
+# built installers
+packaging/windows/*.exe
+# CMake generates this into build/generated, not into the source tree
+src/common/suco_version.h
