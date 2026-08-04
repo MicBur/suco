@@ -64,9 +64,26 @@ strings — memory traffic only.)
 
 ## Current state (2026-07-29)
 
-- Public repo **github.com/MicBur/suco**, released **v0.12.0**; the grid (all 4 Linux nodes) runs
-  0.12.0. APT repo signed + published on every `v*` tag → GitHub Pages; CI green. Docs:
-  `docs/INSTALL.md`, `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
+- Public repo **github.com/MicBur/suco**, released **v0.13.0** (2026-08-04) — GitHub release with
+  Windows installer + zip, APT repo serving 0.13.0. CI green. Docs: `docs/INSTALL.md`,
+  `docs/INSTALL-apt.md`, `docs/BENCHMARK.md`.
+- **⚠ The grid is NOT fully on the release. Measured 2026-08-04:**
+
+  | node | worker | note |
+  | :--- | :--- | :--- |
+  | k3master | **0.11.0** | also runs the only active coordinator (0.11.0) |
+  | node1 | **0.11.0** | |
+  | node2 | **0.11.0** | stale inactive 0.10.5 coordinator binary in `/usr/bin` |
+  | node3 (Brain-OS) | **0.13.0** | deployed + verified, registers fine against the 0.11.0 coordinator |
+
+  An earlier note in this file claimed the grid ran 0.12.0 — that was wrong; the binaries say
+  otherwise. **Why it matters now:** a 0.13.0 client has remote preprocessing ON by default, and a
+  pre-0.13 worker rejects the V3 packet, so the client falls back to compiling **locally** — correct
+  output, but no distribution. Until the other three nodes are upgraded, either upgrade them or set
+  `SUCO_REMOTE_PREPROCESS=0` on clients pointed at this grid.
+  **Blocked on the owner:** only node3 has passwordless sudo; k3master/node1/node2 need a password,
+  so Claude cannot deploy them. Either run the install there, or add the APT source and
+  `apt install suco` (which would also exercise the published repo end to end).
 - **⚡ Behaviour change since 0.12.0 was tagged: remote preprocessing (#42) is ON BY DEFAULT.**
   Eligible TUs no longer run `-E` locally — the client builds a project-header bundle (cheap `-MM`)
   and the worker preprocesses. Measured: **−42 % client CPU** (Linux) and **3.19× wall-clock** on a
