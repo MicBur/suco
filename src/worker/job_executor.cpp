@@ -77,20 +77,28 @@ std::string sandbox_wrap_compile(const std::string& compile_cmd, const std::stri
     const char* net = std::getenv("SUCO_SANDBOX_NET");
     const bool allow_net = net && (std::strcmp(net, "1") == 0 || std::strcmp(net, "true") == 0);
 
+    // Only the job's OWN directory is writable — not the whole shared temp dir. The
+    // object now lives inside it, and TMPDIR points there so the compiler's own
+    // intermediates (cc*.s and friends) land inside the job dir too, which was the
+    // real reason the earlier version had to expose all of /tmp read-write. Two
+    // concurrent jobs on one worker can therefore no longer see or clobber each
+    // other's scratch files.
     if (have_bwrap()) {
-        // Read-only everything, then re-expose /tmp read-write (job dir + object live there).
-        std::string b = "bwrap --ro-bind / / --bind /tmp /tmp --dev /dev --proc /proc --die-with-parent";
+        std::string b = "bwrap --ro-bind / / --bind " + sh_squote(job_dir) + " " + sh_squote(job_dir) +
+                        " --dev /dev --proc /proc --die-with-parent --setenv TMPDIR " + sh_squote(job_dir);
         if (!allow_net) b += " --unshare-net";
         b += " --chdir " + sh_squote(job_dir) + " /bin/sh -c " + sh_squote(compile_cmd);
         return b;
     }
-    // unshare fallback: unprivileged user+mount+pid[+net] ns, remount ro, /tmp rw.
+    // unshare fallback: unprivileged user+mount+pid[+net] ns, remount ro, job dir rw.
     std::string inner =
         "mount --make-rprivate / 2>/dev/null || true; "
         "for m in $(awk '{print $2}' /proc/self/mounts | sort -r); do "
         "mount -o remount,ro,bind \"$m\" \"$m\" 2>/dev/null || true; done; "
         "mount -t proc none /proc 2>/dev/null || true; "
-        "mount --bind /tmp /tmp 2>/dev/null && mount -o remount,rw,bind /tmp /tmp 2>/dev/null || true; "
+        "mount --bind " + sh_squote(job_dir) + " " + sh_squote(job_dir) + " 2>/dev/null && "
+        "mount -o remount,rw,bind " + sh_squote(job_dir) + " " + sh_squote(job_dir) + " 2>/dev/null || true; "
+        "export TMPDIR=" + sh_squote(job_dir) + "; "
         "cd " + sh_squote(job_dir) + " && ( " + compile_cmd + " )";
     std::string un = "unshare --user --map-root-user --mount --pid --fork";
     if (!allow_net) un += " --net";
@@ -160,8 +168,6 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
         }
     }
     
-    std::string temp_out = get_temp_file(is_msvc ? ".obj" : ".o");
-
     // Every job gets its own directory, and the input is written under the CLIENT's
     // original file name inside it (see compile_in_job_dir below for why). It also
     // hosts the job's C++20 module CMIs (gcm.cache/), which MUST NOT be shared: two
@@ -178,6 +184,12 @@ JobExecutor::Result JobExecutor::execute(const std::string& command,
         result.log = "suco-worker error: Failed to create job directory: " + jec.message();
         return result;
     }
+
+    // The object goes INSIDE the job dir, not next to it in the shared temp dir, so a
+    // sandboxed compile only ever needs its own directory writable (#43). The -o path
+    // is not embedded in the object — verified for -O2 and -g — so this does not move
+    // a single byte of output. remove_all(job_dir) below cleans it up with the rest.
+    std::string temp_out = job_dir + (is_msvc ? "/suco_out.obj" : "/suco_out.o");
 
     // The compiler is handed the preprocessed text under a name of OUR choosing, and
     // that name ends up in the object's STT_FILE symbol and its debug info. GCC re-runs
@@ -483,7 +495,7 @@ JobExecutor::Result JobExecutor::execute_remote_preprocess(const RemoteJob& job,
         o.write(job.source.data(), job.source.size());
     }
 
-    std::string temp_out = get_temp_file(".o");
+    std::string temp_out = job_dir + "/suco_out.o";   // inside the job dir — see execute()
     auto remapped = suco::header_bundle::remap_include_flags(job.include_flags, job.project_root, job_dir);
     std::string compile_cmd = build_rpp_command(job.command, remapped, rel_name, temp_out, job_dir, job.toolchain_hash, is_c);
 #ifndef _WIN32
